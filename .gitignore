@@ -8,8 +8,6 @@ __pycache__/
 
 # Images
 src/filter_images
-last_test2
-last_tests
 
 # Distribution / packaging
 .Python

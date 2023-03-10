@@ -176,6 +176,50 @@ class Objective:
             return tf.constant(loss)
 
         return Objective(model, [layer.output], [optimization_function], [[0]])
+
+ 
+    @staticmethod
+    def spatial(model: Model,
+                layer: Union[str, int],
+                spatials: Union[int, List[int]],
+                batches: Union[int, List[int]] = -1):
+
+        if type(layer) is str:
+            layer = model.get_layer(name = layer)
+        
+        else:
+            layer = model.get_layer(index = layer)
+
+        shape = layer.output.shape
+
+        coords = []
+
+        if type(spatials) is int:
+           coords.append((int(spatials / shape[1]), 
+                          spatials % shape[1]))
+
+        else:
+            for s in spatials:
+                coords.append((int(s / shape[1]), 
+                               s % shape[1]))
+
+
+        def optimization_function(model_outputs, batch, indexes):
+            loss = 0.0
+        
+            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
+              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+
+                model_outputs = model_outputs[batch][indexes[0]]
+
+                for c in coords:
+                    loss += tf.reduce_mean(model_outputs[c[0], c[1]])
+
+                return loss
+                
+            return tf.constant(loss)
+
+        return Objective(model, [layer.output], [optimization_function], [[0]])
     
     
     @staticmethod
