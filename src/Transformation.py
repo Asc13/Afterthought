@@ -122,12 +122,12 @@ def apply_kernel(size: int, type: str) -> Callable:
     else:
         kernel = None
 
-    if kernel:
+    if kernel != None:
         kernel = tf.reshape(kernel, (size, size, 1, 1))
         kernel = tf.tile(kernel, [1, 1, 3, 1])
 
     def apply_kernel_helper(images: tf.Tensor) -> tf.Tensor:
-        return tf.nn.depthwise_conv2d(images, kernel, strides = [1, 1, 1, 1], padding = 'SAME') if kernel else images
+        return tf.nn.depthwise_conv2d(images, kernel, strides = [1, 1, 1, 1], padding = 'SAME') if kernel != None else images
     
     return apply_kernel_helper
 
@@ -158,9 +158,6 @@ def apply_double_kernel(size: int, type: str) -> Callable:
         kernel2[np.arange(1, size - 1), 0] = -10
         kernel2[np.arange(1, size - 1), -1] = 10
         kernel2 = tf.cast(kernel2, tf.float32)
-    
-    elif type == 'LAPLACIAN-ALTERNATIVE':
-        pass
 
     kernel1 = tf.reshape(kernel1, (size, size, 1, 1))
     kernel1 = tf.tile(kernel1, [1, 1, 3, 1])

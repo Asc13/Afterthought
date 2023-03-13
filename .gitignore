@@ -6,9 +6,6 @@ __pycache__/
 # C extensions
 *.so
 
-# Images
-src/filter_images
-
 # Distribution / packaging
 .Python
 build/

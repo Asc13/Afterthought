@@ -331,9 +331,43 @@ class Parameterization:
 
         for n in range(levels):
             k = 2 ** n
-            pyramid += lowres_tensor(shape, (batches, 2, ) + (3, size // k, size // k), sd = sd)
+            pyramid += lowres_tensor(shape, (batches, 2, 1, ) + (3, size // k, size // k), sd = sd)
         
-        function = lambda pyramid: to_valid_rgb(pyramid, normalizer, values_range)
+        images = tf.reshape(pyramid, shape)
 
-        return Parameterization(list(pyramid), [function] * batches)
-    
+        fft_scale = get_fft_scale(size, size, decay_power = fft_decay)
+
+        shape = (batches, 1, size, size, 3)
+
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale), normalizer, values_range)
+
+        return Parameterization(list(images), [function] * batches)
+
+
+    @staticmethod
+    def shared_parameterization(size: int, dividers: List[int], 
+                                batches: int = 1,
+                                fft_decay: float = 0.85,
+                                normalizer: str = 'sigmoid', 
+                                values_range: Tuple[float, float] = (0, 1)):
+        
+        values_range = (min(values_range), max(values_range))
+        
+        frequencies = fft_2d_freq(size, size)
+        shape = (batches, 2, 1, 3) + frequencies.shape
+
+        shared = []
+
+        for b in range(batches):
+            shared.append(lowres_tensor((batches, size, size, 3), (1, size // dividers[b], size // dividers[b], 3)))
+        
+        shared = sum(shared)
+        
+        fft_scale = get_fft_scale(size, size, decay_power = fft_decay)
+
+        shape = (batches, 1, size, size, 3)
+        images = fft_image(shape)
+        
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale) + shared, normalizer, values_range)
+
+        return Parameterization(list(images), [function] * batches)

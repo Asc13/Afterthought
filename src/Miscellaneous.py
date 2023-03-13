@@ -1,8 +1,49 @@
 import tensorflow as tf
 import tensorflow_addons as tfa
+import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import math
+import os
+
+from typing import Tuple
+
+
+def load_image(shape: Tuple, path: str) -> tf.Tensor:
+    _, x, y, z = shape
+
+    image = np.float32(cv2.imread(path)) / 255.0
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    h, w, _ = image.shape
+
+    min_side = min(h, w)
+    max_side_center = max(h, w) // 2.0
+    
+    min_cut = int(max_side_center - min_side // 2)
+    max_cut = int(max_side_center + min_side // 2)
+    
+    image = image[:, min_cut:max_cut] if w > h else image[min_cut:max_cut]
+    
+    image = cv2.resize(image, (x, y))
+    
+    return tf.reshape(image, (1, x, y, z))
+    
+
+def load_files(path: str):
+    subfolders = [f.path for f in os.scandir(path) if f.is_file()]
+
+    x = len(subfolders)
+    sqr = int(math.sqrt(x)) + 1
+    fig = plt.figure(figsize = (10, 10))
+
+    for n, sf in enumerate(subfolders):
+        image = np.float32(cv2.imread(sf)) / 255.0
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        fig.add_subplot(sqr, sqr, n + 1)
+        plt.imshow(image)
+        plt.axis('off')
 
 
 @tf.function
@@ -16,7 +57,6 @@ def similarity(tensor_a: tf.Tensor, tensor_b: tf.Tensor) -> tf.Tensor:
 @tf.function
 def dot(tensor_a: tf.Tensor, tensor_b: tf.Tensor, cossim_pow: float = 2.0) -> tf.Tensor:
     sim = tf.maximum(similarity(tensor_a, tensor_b), 1e-1) ** cossim_pow
-    
     dot = tf.reduce_sum(tensor_a * tf.cast(tensor_b, tf.float32))
 
     return dot * sim
@@ -92,9 +132,10 @@ def kernel_fabricator(size: int, center: int, border):
 
 def blur_edge(images: tf.Tensor, size: int = 31) -> tf.Tensor:
     _, h, w, _ = images.shape
-
+    
     pad = tf.pad(images, [(0, 0), (size, size), (size, size), (0, 0)])
     gauss = tfa.image.gaussian_filter2d(pad, (2 * size + 1, 2 * size + 1))
+
     gauss = tf.image.resize(gauss, [h, w])
     
     y, x = np.indices((h, w))

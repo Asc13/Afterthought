@@ -259,11 +259,11 @@ class Objective:
                 model_outputs = model_outputs[batch][indexes[0]]
 
                 if type(channels) is int:
-                    return tf.reduce_mean(model_outputs[:, _x, _y, channels])
+                    return tf.reduce_mean(model_outputs[_x, _y, channels])
                 
                 else:
                     for c in channels:
-                        loss += tf.reduce_mean(model_outputs[:, _x, _y, c])
+                        loss += tf.reduce_mean(model_outputs[_x, _y, c])
 
                     return loss
                 
@@ -277,7 +277,7 @@ class Objective:
                   layer: Union[str, int],
                   vectors: Union[tf.Tensor, List[tf.Tensor]],
                   batches: Union[int, List[int]] = -1,
-                  power: float = 2.0):
+                  power: float = 0.0):
         
         if type(layer) is str:
             layer = model.get_layer(name = layer)
@@ -306,7 +306,7 @@ class Objective:
         
             return tf.constant(loss)
         
-        return Objective(model, [layer.output], optimization_function, [[0]])
+        return Objective(model, [layer.output], [optimization_function], [[0]])
     
 
     @staticmethod
@@ -374,6 +374,7 @@ class Objective:
         return Objective(model, [layer.output], [optimization_function], [[0]])
     
 
+    @staticmethod
     def alignment(model: Model,
                   layer: Union[str, int],
                   decay: int = 2):

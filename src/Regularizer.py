@@ -30,7 +30,7 @@ def Linf(factor: float = 1.0) -> Callable:
 
 def total_variation(factor: float = 1.0) -> Callable:
     def reg(image: tf.Tensor) -> tf.Tensor:
-        return factor * tf.image.total_variation(image)
+        return factor * tf.image.total_variation(image)[0]
     
     return reg
 
