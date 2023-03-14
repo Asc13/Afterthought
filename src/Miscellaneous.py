@@ -30,12 +30,12 @@ def load_image(shape: Tuple, path: str) -> tf.Tensor:
     return tf.reshape(image, (1, x, y, z))
     
 
-def load_files(path: str):
+def load_files(path: str, size: int = 10, has_titles: bool = False):
     subfolders = [f.path for f in os.scandir(path) if f.is_file()]
 
     x = len(subfolders)
     sqr = int(math.sqrt(x)) + 1
-    fig = plt.figure(figsize = (10, 10))
+    fig = plt.figure(figsize = (size, size))
 
     for n, sf in enumerate(subfolders):
         image = np.float32(cv2.imread(sf)) / 255.0
@@ -43,6 +43,10 @@ def load_files(path: str):
 
         fig.add_subplot(sqr, sqr, n + 1)
         plt.imshow(image)
+
+        if has_titles:
+            plt.title(sf.split('/')[-1].split('.')[0])
+            
         plt.axis('off')
 
 

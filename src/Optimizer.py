@@ -154,11 +154,12 @@ def run_activation_atlas(path: str,
             Objective.direction(model, layer, vectors = np.asarray(v), batches = n)
             for n, v in enumerate(acts_flat)
         ])
-        
-        r = random.sample(range(0, acts_flat.shape[0]), samples)
 
-        parameterization.images = [parameterization.images[nd] for nd in r]
-        objectives.layers = [objectives.layers[nd] for nd in r]
+        if samples != -1:
+            r = random.sample(range(0, acts_flat.shape[0]), samples)
+
+            parameterization.images = [parameterization.images[nd] for nd in r]
+            objectives.layers = [objectives.layers[nd] for nd in r]
 
         regularizers = []
 

@@ -240,15 +240,14 @@ def standard(input_shape: Tuple, unit: int):
     return composition(input_shape,
         [
             padding(unit * 4),
-            jitter(unit * 2),
-            jitter(unit * 2),
-            jitter(unit * 4),
-            jitter(unit * 4),
-            jitter(unit * 4),
-            flip(seed = 0),
+            jitter(unit * 2, seed = 0),
+            jitter(unit * 2, seed = 0),
+            jitter(unit * 4, seed = 0),
+            jitter(unit * 4, seed = 0),
+            jitter(unit * 4, seed = 0),
             scale((0.92, 0.96), seed = 0),
             blur_T(sigma_range = (1.0, 1.1)),
-            jitter(unit),
-            jitter(unit),
+            jitter(unit, seed = 0),
+            jitter(unit, seed = 0),
             flip(seed = 0)
         ])

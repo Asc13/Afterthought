@@ -125,7 +125,6 @@ class Objective:
         def optimization_function(model_outputs, batch, indexes):
             if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
               ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
-
                 return tf.reduce_mean(model_outputs[batch][indexes[0]] ** power)
 
             return tf.constant(0.0)
@@ -213,7 +212,7 @@ class Objective:
                 model_outputs = model_outputs[batch][indexes[0]]
 
                 for c in coords:
-                    loss += tf.reduce_mean(model_outputs[c[0], c[1]])
+                    loss += tf.reduce_mean(model_outputs[..., c[0], c[1], :])
 
                 return loss
                 
@@ -259,11 +258,11 @@ class Objective:
                 model_outputs = model_outputs[batch][indexes[0]]
 
                 if type(channels) is int:
-                    return tf.reduce_mean(model_outputs[_x, _y, channels])
+                    return tf.reduce_mean(model_outputs[..., _x, _y, channels])
                 
                 else:
                     for c in channels:
-                        loss += tf.reduce_mean(model_outputs[_x, _y, c])
+                        loss += tf.reduce_mean(model_outputs[..., _x, _y, c])
 
                     return loss
                 
