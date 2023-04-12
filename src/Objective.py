@@ -6,11 +6,12 @@ from tensorflow.keras import Model
 from typing import List, Tuple, Callable, Union
 
 from Miscellaneous import dot
+from Wrapper import *
 
 
 class Objective:
 
-    def __init__(self, model: Model,
+    def __init__(self, model: Wrapper,
                        layers: List[Layer],
                        function: List[Callable],
                        indexes: List[int]):
@@ -93,7 +94,7 @@ class Objective:
     
 
     def compile(self, batches) -> Tuple[Model, Callable, Tuple]:
-        feature_extractor = Model(inputs = self.model.input, outputs = [*self.layers])
+        feature_extractor = Model(inputs = self.model.get_input(), outputs = [*self.layers])
 
         def objective_function(model_outputs, batch):
             loss = 0.0
@@ -109,17 +110,12 @@ class Objective:
     
 
     @staticmethod
-    def layer(model: Model,
+    def layer(model: Wrapper,
               layer: Union[str, int],
               deepDream: bool = False,
               batches: Union[int, List[int]] = -1):
 
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
-
+        layer = model.get_layer(layer)
         power = 2.0 if deepDream else 1.0
 
         def optimization_function(model_outputs, batch, indexes):
@@ -133,17 +129,12 @@ class Objective:
     
 
     @staticmethod
-    def channel(model: Model,
+    def channel(model: Wrapper,
                 layer: Union[str, int],
                 channels: Union[int, List[int]],
                 batches: Union[int, List[int]] = -1):
 
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
-
+        layer = model.get_layer(layer)
         shape = layer.output.shape
 
         if type(channels) is int:
@@ -178,17 +169,12 @@ class Objective:
 
  
     @staticmethod
-    def spatial(model: Model,
+    def spatial(model: Wrapper,
                 layer: Union[str, int],
                 spatials: Union[int, List[int]],
                 batches: Union[int, List[int]] = -1):
 
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
-
+        layer = model.get_layer(layer)
         shape = layer.output.shape
 
         coords = []
@@ -222,19 +208,14 @@ class Objective:
     
     
     @staticmethod
-    def neuron(model: Model,
+    def neuron(model: Wrapper,
                layer: Union[str, int],
                channels: Union[int, List[int]],
                x: int = None, 
                y: int = None, 
                batches: Union[int, List[int]] = -1):
 
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
-    
+        layer = model.get_layer(layer)
         shape = layer.output.shape
 
         _x = shape[1] // 2 if x is None else x
@@ -272,18 +253,13 @@ class Objective:
     
 
     @staticmethod
-    def direction(model: Model,
+    def direction(model: Wrapper,
                   layer: Union[str, int],
                   vectors: Union[tf.Tensor, List[tf.Tensor]],
                   batches: Union[int, List[int]] = -1,
                   power: float = 0.0):
         
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
-
+        layer = model.get_layer(layer)
         vectors = vectors.astype("float32")
 
         def optimization_function(model_outputs, batch, indexes):
@@ -309,23 +285,14 @@ class Objective:
     
 
     @staticmethod
-    def channel_interpolate(model: Model,
+    def channel_interpolate(model: Wrapper,
                             layer1: Union[str, int],
                             channel1: int,
                             layer2: Union[str, int],
                             channel2: int):
 
-        if type(layer1) is str:
-            layer1 = model.get_layer(name = layer1)
-        
-        else:
-            layer1 = model.get_layer(index = layer1)
-        
-        if type(layer2) is str:
-            layer2 = model.get_layer(name = layer2)
-        
-        else:
-            layer2 = model.get_layer(index = layer2)
+        layer1 = model.get_layer(layer1)
+        layer2 = model.get_layer(layer2)
         
         def optimization_function(model_outputs, batch, indexes):
             S = 0
@@ -345,14 +312,10 @@ class Objective:
     
 
     @staticmethod
-    def diversity(model: Model,
+    def diversity(model: Wrapper,
                   layer: Union[str, int]):
         
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
+        layer = model.get_layer(layer)
         
         def optimization_function(model_outputs, batch, indexes):
             batches = len(model_outputs)
@@ -374,15 +337,11 @@ class Objective:
     
 
     @staticmethod
-    def alignment(model: Model,
+    def alignment(model: Wrapper,
                   layer: Union[str, int],
                   decay: int = 2):
 
-        if type(layer) is str:
-            layer = model.get_layer(name = layer)
-        
-        else:
-            layer = model.get_layer(index = layer)
+        layer = model.get_layer(layer)
 
         def optimization_function(model_outputs, batch, indexes):
             batches = len(model_outputs)

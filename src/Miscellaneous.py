@@ -3,10 +3,10 @@ import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
-import math
+from math import *
 import os
 
-from typing import Tuple
+from typing import Tuple, Callable, Union
 
 
 def load_image(shape: Tuple, path: str) -> tf.Tensor:
@@ -34,7 +34,7 @@ def load_files(path: str, size: int = 10, has_titles: bool = False):
     subfolders = [f.path for f in os.scandir(path) if f.is_file()]
 
     x = len(subfolders)
-    sqr = int(math.sqrt(x)) + 1
+    sqr = int(sqrt(x)) + 1
     fig = plt.figure(figsize = (size, size))
 
     for n, sf in enumerate(subfolders):
@@ -48,6 +48,38 @@ def load_files(path: str, size: int = 10, has_titles: bool = False):
             plt.title(sf.split('/')[-1].split('.')[0])
             
         plt.axis('off')
+
+
+@tf.function(reduce_retracing = True)
+def compute_gradients_fmaps(model: tf.keras.Model,
+                            images: tf.Tensor,
+                            targets: tf.Tensor) -> Tuple:
+
+    with tf.GradientTape(watch_accessed_variables = False) as tape:
+        tape.watch(images)
+        feature_maps, predictions = model(images)
+        score = tf.reduce_sum(tf.multiply(predictions, targets), axis = -1)
+
+    return feature_maps, tape.gradient(score, feature_maps)
+
+
+@tf.function(reduce_retracing = True)
+def compute_gradients(model: tf.keras.Model,
+                      images: tf.Tensor,
+                      targets: tf.Tensor) -> Tuple:
+
+    with tf.GradientTape(watch_accessed_variables = False) as tape:
+        tape.watch(images)
+        score = tf.reduce_sum(tf.multiply(model(images), targets), axis = 1)
+
+    return tape.gradient(score, images)
+
+
+def repeat_labels(labels: tf.Tensor, repetitions: int) -> tf.Tensor:
+    labels = tf.expand_dims(labels, axis = 1)
+    labels = tf.repeat(labels, repeats = repetitions, axis = 1)
+    
+    return tf.reshape(labels, (-1, *labels.shape[2:]))
 
 
 @tf.function
@@ -167,7 +199,7 @@ def motion_kernel(angle, d, sz = 1):
 
 def gauss(std, x, y):
     d = x ** 2 + y ** 2
-    g = math.exp(-d / (2 * std ** 2))
+    g = exp(-d / (2 * std ** 2))
 
     return g
 
@@ -178,3 +210,45 @@ def high_pass(std, img_shape):
 
 def low_pass(std, img_shape):
     return np.asarray([[gauss(std, x - img_shape[0]/2, y - img_shape[1]/2)  for y in range(img_shape[1])] for x in range(img_shape[0])])
+
+
+
+def normalize_image(image: Union[tf.Tensor, np.ndarray]) -> np.ndarray:
+    image = np.array(image, np.float32)
+
+    image -= image.min()
+    image /= image.max()
+
+    return image
+
+
+def clip_heatmap(heatmap: Union[tf.Tensor, np.ndarray],
+                 percentile: float) -> np.ndarray:
+    
+    clip_min = np.percentile(heatmap, percentile)
+    clip_max = np.percentile(heatmap, 100.0 - percentile)
+
+    return np.clip(heatmap, clip_min, clip_max)
+
+
+def plot_attribution(explanation: Union[tf.Tensor, np.ndarray],
+                     image: Union[tf.Tensor, np.ndarray],
+                     cmap: str = "jet",
+                     alpha: float = 0.5,
+                     clip_percentile: float = 0.1,
+                     absolute_value: bool = False,
+                     **plot_kwargs):
+    
+    plt.imshow(normalize_image(image))
+
+    if explanation.shape[-1] == 3:
+        explanation = np.mean(explanation, -1)
+
+    if absolute_value:
+        explanation = np.abs(explanation)
+
+    if clip_percentile:
+        explanation = clip_heatmap(explanation, clip_percentile)
+
+    plt.imshow(normalize_image(explanation), cmap = cmap, alpha = alpha, **plot_kwargs)
+    plt.axis('off')
