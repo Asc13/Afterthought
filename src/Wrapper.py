@@ -23,6 +23,10 @@ class Wrapper:
             self.name = 'None'
 
     
+    def layers(self):
+        return [layer.name for layer in self.model.layers]
+    
+    
     def get_layer(self, layer: Union[str, int]) -> Layer:
         if isinstance(layer, str):
             return self.model.get_layer(name = layer)
@@ -44,4 +48,8 @@ class Wrapper:
 
     def get_input_shape(self) -> Tuple:
         return self.model.input.shape
+    
+
+    def get_layer_output_shape(self, layer) -> Tuple:
+        return self.get_layer(layer).output.shape
 

@@ -3,10 +3,11 @@ import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
-from math import *
 import os
 
-from typing import Tuple, Callable, Union
+from math import *
+
+from typing import Tuple, Union
 
 
 def load_image(shape: Tuple, path: str) -> tf.Tensor:
@@ -252,3 +253,16 @@ def plot_attribution(explanation: Union[tf.Tensor, np.ndarray],
 
     plt.imshow(normalize_image(explanation), cmap = cmap, alpha = alpha, **plot_kwargs)
     plt.axis('off')
+
+
+def plot_all(images: tf.Tensor):
+    fig = plt.figure(figsize = (20, 20))
+    sqr = int(sqrt(len(images))) + 1
+
+    for n, image in enumerate(images):
+        a = fig.add_subplot(sqr, sqr, n + 1)
+        plt.imshow(image[0])
+        plt.title('batch ' + str(n))
+        plt.axis('off')
+
+    plt.show()

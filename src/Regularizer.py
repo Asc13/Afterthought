@@ -4,7 +4,7 @@ import cv2
 
 from typing import Callable
 
-from Miscellaneous import blur_conv
+from src.Miscellaneous import blur_conv
 
 
 def L1(factor: float = 1.0) -> Callable:

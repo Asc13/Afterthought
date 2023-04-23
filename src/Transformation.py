@@ -5,7 +5,7 @@ import cv2
 
 from typing import Tuple, List, Union, Callable
 
-from Miscellaneous import kernel_fabricator, motion_kernel, blur_edge
+from src.Miscellaneous import kernel_fabricator, motion_kernel, blur_edge
 
 
 def blur_T(sigma_range: Tuple[float, float] = (1.0, 2.0), kernel_size: int = 10) -> Callable:
@@ -186,15 +186,15 @@ def median(size: int = 1) -> Callable:
     return median_helper
 
 
-def deconvolution(size: int = 1) -> Callable:
+def deconvolution(image_size: int, size: int = 1) -> Callable:
     ANGLE = np.deg2rad(135)
     D = 22
 
     def deconvolution_helper(images: tf.Tensor) -> tf.Tensor:
+        images = tf.image.resize(images, [image_size, image_size])
         images = blur_edge(images, size)
 
         images = tf.transpose(images, (0, 3, 1, 2))
-
 
         h, w = images.shape[-2:]
 
@@ -202,7 +202,6 @@ def deconvolution(size: int = 1) -> Callable:
         spectrum1 = tf.complex(tf.math.real(fft), tf.math.imag(fft))
 
         images = tf.transpose(images, (0, 2, 3, 1))
-
 
         psf = motion_kernel(ANGLE, D, size)
         psf /= psf.sum()

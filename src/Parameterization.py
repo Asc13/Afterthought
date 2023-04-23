@@ -4,7 +4,7 @@ import tf_slim as slim
 
 from typing import Union, Tuple, List, Callable
 
-from Miscellaneous import composite_activation
+from src.Miscellaneous import composite_activation
 
 
 imagenet_color_correlation = tf.cast(
@@ -85,7 +85,7 @@ def cppn(size: Tuple, batches: int,
     rgb = slim.conv2d(
         net,
         num_output_channels,
-        kernel_size = (1, 1),
+        kernel_size = (1, 1)
     )
 
     return rgb

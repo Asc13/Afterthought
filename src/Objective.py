@@ -5,8 +5,8 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras import Model
 from typing import List, Tuple, Callable, Union
 
-from Miscellaneous import dot
-from Wrapper import *
+from src.Miscellaneous import dot
+from src.Wrapper import *
 
 
 class Objective:
@@ -126,7 +126,7 @@ class Objective:
             return tf.constant(0.0)
 
         return Objective(model, [layer.output], [optimization_function], [[0]])
-    
+
 
     @staticmethod
     def channel(model: Wrapper,

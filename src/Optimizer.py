@@ -2,21 +2,18 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
 import random
-import cv2
 import os
-
 
 from typing import Callable
 from tensorflow.keras.optimizers import Adam, Optimizer
 from typing import Union, Tuple, List, Callable, Optional
 from tensorflow.keras import Model, applications, preprocessing
 
-
-from Objective import Objective
-from Parameterization import Parameterization
-from Transformation import *
-from Miscellaneous import load_image
-from Wrapper import *
+from src.Objective import Objective
+from src.Parameterization import Parameterization
+from src.Transformation import *
+from src.Miscellaneous import load_image
+from src.Wrapper import *
 
 
 def run(objective: Objective,
@@ -129,18 +126,18 @@ def run_activation_atlas(path: str,
                          verbose = True) -> tf.Tensor:
     
         l = model.get_layer(layer)
-        image = load_image(model.input.shape, path)
-        feature_extractor = Model(inputs = model.input, outputs = l.output)
+        image = load_image(model.get_input_shape(), path)
+        feature_extractor = Model(inputs = model.get_input(), outputs = l.output)
         
         if verbose:
             plt.imshow(image[0])
             plt.show()
 
-            prediction_probabilities = model(image)
-            predictions = applications.inception_v3.decode_predictions(prediction_probabilities.numpy())[0]
-        
+            prediction_probabilities = model.predict(image)
+            predictions = model.decode(prediction_probabilities.numpy())
+    
             print([(class_name, prob) for (_, class_name, prob) in predictions])
-
+    
         acts = feature_extractor(image)[0]
 
         acts_flat = tf.reshape(acts, ([-1] + [acts.shape[2]]))
@@ -198,7 +195,7 @@ def run_activation_layer(path: str,
     objectives = []
 
     for n, e in enumerate(layers):
-        l = model.get_layer()    
+        l = model.get_layer(e)    
         feature_extractor = Model(inputs = model.get_input(), outputs = l.output)  
         acts = feature_extractor(image)[0]
 
@@ -227,110 +224,3 @@ def run_activation_layer(path: str,
                  verbose = verbose)
 
     return images
-
-
-def search_class(path: str,
-                 classes_path: str,
-                 model: Wrapper,
-                 nb_classes: int,
-                 batch_size: int = 50,
-                 image_shape: Optional[Tuple] = (512, 512),
-                 verbose = True) -> tf.Tensor:
-
-    image = load_image(model.get_input_shape(), path)
-
-    original_prediction_probabilities = model.predict(image)
-    original_predictions = model.decode(original_prediction_probabilities.numpy(), top = 1)
-    original_stats = [(class_name, prob) for (_, class_name, prob) in original_predictions][0]
-    
-    if verbose:
-        plt.imshow(image[0])
-        plt.show()
-
-        print(original_stats)
-
-    classes = np.arange(nb_classes)
-    np.random.shuffle(classes)
-    
-    indexes_splitted = np.array_split(classes, batch_size)
-    flag = True
-    final_image = None
-
-    _, x, y, _ = model.get_input_shape()
-
-    unit = int(512 / 16)
-    transformations = [
-        padding(unit * 4, pad_value = 0.5),
-        jitter(unit * 2, seed = 0),
-        jitter(unit * 2, seed = 0),
-        jitter(unit * 4, seed = 0),
-        jitter(unit * 4, seed = 0),
-        jitter(unit * 4, seed = 0),
-        padding(unit * 6),
-        scale((1.1, 1.8), seed = 0),
-        blur_T(sigma_range = (1.0, 1.1)),
-        flip(seed = 0),
-        padding(unit * 2),
-        jitter(unit * 2, seed = 0),
-        jitter(unit * 2, seed = 0),
-        padding(unit * 2),
-    ]
-
-    if classes_path is None:
-        for indexes in indexes_splitted:
-            if flag:
-                parameterization = Parameterization.image_fft(image_shape[0], batches = len(indexes))
-                objective = Objective.neuron(model, 'conv_preds', int(indexes[0]), batches = 0)
-
-                for i in range(1, len(indexes)):
-                    objective += Objective.neuron(model, 'conv_preds', int(indexes[i]), batches = i)
-                    
-                images = run(objective, parameterization, 
-                             transformations = transformations,
-                             steps = 1000, image_shape = image_shape,
-                             verbose = False)
-                
-                for n, image in enumerate(images):
-                    new = tf.image.resize(image, [x, y])
-                    prediction_probabilities = model.predict(new)
-                    predictions = model.decode(prediction_probabilities.numpy(), top = 1)
-
-                    stats = [(class_name, prob) for (_, class_name, prob) in predictions][0]
-                    
-                    if verbose:
-                        preprocessing.image.save_img(f'tests/classes/{indexes[n]}.png', image[0])
-                        print(str(indexes[n]), stats)
-                            
-                    if stats[0] == original_stats[0]: 
-                        final_image = new
-                        flag = False
-                        break
-            else:
-                break
-    
-    else:
-        subfiles = [f.path for f in os.scandir(classes_path) if f.is_file()]
-
-        avg = 0.0
-
-        for n, f in enumerate(subfiles, start = 1):
-            image = load_image(model.get_input_shape(), f)
-
-            prediction_probabilities = model.predict(image)
-            predictions = model.decode(prediction_probabilities.numpy(), top = 1)
-            
-            stats = [(class_name, prob) for (_, class_name, prob) in predictions][0]
-            
-            avg += stats[1]
-
-            if stats[0] == original_stats[0]: 
-                final_image = image
-                flag = False
-                print(f, ' Avg: ', avg / n)
-                break
-        
-        plt.imshow(final_image[0])
-        plt.show()
-        
-
-    return final_image
