@@ -17,21 +17,33 @@ class Wrapper:
             func = getattr(applications, f'{model}')
             self.model = func(include_top = True, weights = weights, classes = classes)
             self.name = model
+            self.classes = classes
 
         else:
             self.model = model
             self.name = 'None'
+            self.classes = classes
 
     
     def layers(self):
         return [layer.name for layer in self.model.layers]
     
     
+    def get_layers(self):
+        return self.model.layers
+    
+    
     def get_layer(self, layer: Union[str, int]) -> Layer:
         if isinstance(layer, str):
             return self.model.get_layer(name = layer)
         
+        elif layer == -1:
+            for layer in self.model.layers:
+                if layer.output.shape[-1] == self.classes:
+                    return layer
+                
         return self.model.get_layer(index = layer)
+    
     
 
     def predict(self, image: tf.Tensor) -> tf.Tensor:
@@ -44,6 +56,10 @@ class Wrapper:
 
     def get_input(self):
         return self.model.input
+    
+    
+    def get_output(self):
+        return self.model.output
     
 
     def get_input_shape(self) -> Tuple:

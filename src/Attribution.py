@@ -10,14 +10,15 @@ from sklearn import linear_model
 from typing import Union, Any, Callable
 
 from src.Miscellaneous import *
+from src.Wrapper import *
 
 
 class Attribution(ABC):
 
-    def __init__(self, model: Model,
+    def __init__(self, model: Wrapper,
                        batches: int = 1):
         
-        self.model = model
+        self.model = Model(model.get_input(), model.get_output()) 
         self.batches = batches
 
 
@@ -37,22 +38,19 @@ class Attribution(ABC):
 
 class GradientCAM(Attribution):
 
-    def __init__(self, model: Model, 
+    def __init__(self, model: Wrapper, 
                        layer: Union[int, str] = None, 
                        batches: int = 1):
         
         super().__init__(model, batches)
 
-        if type(layer) is str:
-            self.layer = model.get_layer(name = layer)
-           
-        elif type(layer) is int:
-            self.layer = model.get_layer(index = layer)
+        if type(layer) is str or type(layer) is int:
+            self.layer = model.get_layer(layer)
            
         else:
-            self.layer = next(layer for layer in model.layers[::-1] if hasattr(layer, 'filters'))
+            self.layer = next(layer for layer in model.get_layers()[::-1] if hasattr(layer, 'filters'))
 
-        self.model = tf.keras.Model(model.input, [self.layer.output, model.output])
+        self.model = Model(model.get_input(), [self.layer.output, model.get_output()])
 
 
     def explainer(self, images: Union[tf.data.Dataset, tf.Tensor, np.ndarray],
@@ -123,7 +121,7 @@ class GradientInput(Attribution):
 
 class IntegradtedGradient(Attribution):
 
-    def __init__(self, model: tf.keras.Model,
+    def __init__(self, model: Wrapper,
                        batches: int = 1,
                        steps: int = 10,
                        base: float = 0.0):
@@ -168,7 +166,7 @@ class IntegradtedGradient(Attribution):
 
 class LIME(Attribution):
 
-    def __init__(self, model: Model,
+    def __init__(self, model: Wrapper,
                        batches: int = 1,
                        interpretable_model: Any = linear_model.Ridge(alpha = 2),
                        kernel: Callable[[tf.Tensor, tf.Tensor, tf.Tensor], tf.Tensor] = None,
@@ -287,7 +285,7 @@ class LIME(Attribution):
 
 class KernelSHAP(LIME):
     
-    def __init__(self, model: Model, 
+    def __init__(self, model: Wrapper, 
                        batches: int = 1,
                        map: Callable[[tf.Tensor], tf.Tensor] = None, 
                        samples: int = 150, 
@@ -341,7 +339,7 @@ class KernelSHAP(LIME):
 
 class RISE(Attribution):
 
-    def __init__(self, model: Model, 
+    def __init__(self, model: Wrapper, 
                        batches: int = 1,
                        samples: int = 10,
                        grid_size: Union[int, Tuple[int]] = 7,

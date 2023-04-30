@@ -253,6 +253,7 @@ def plot_attribution(explanation: Union[tf.Tensor, np.ndarray],
 
     plt.imshow(normalize_image(explanation), cmap = cmap, alpha = alpha, **plot_kwargs)
     plt.axis('off')
+    plt.show()
 
 
 def plot_all(images: tf.Tensor):

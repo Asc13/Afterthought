@@ -137,14 +137,15 @@ class Objective:
         layer = model.get_layer(layer)
         shape = layer.output.shape
 
-        if type(channels) is int:
-            if channels < 0 or channels > shape[3]:
-                channels = shape[3] // 2 
+        if len(shape) > 2:
+            if type(channels) is int:
+                if channels < 0 or channels > shape[3]:
+                    channels = shape[3] // 2 
 
-        else:
-            for i in range(len(channels)):
-                if channels[i] < 0 or channels[i] > shape[3]:
-                    channels[i] = shape[3] // 2
+            else:
+                for i in range(len(channels)):
+                    if channels[i] < 0 or channels[i] > shape[3]:
+                        channels[i] = shape[3] // 2
 
         def optimization_function(model_outputs, batch, indexes):
             loss = 0.0
@@ -179,14 +180,15 @@ class Objective:
 
         coords = []
 
-        if type(spatials) is int:
-           coords.append((int(spatials / shape[1]), 
-                          spatials % shape[1]))
+        if len(shape) > 2:
+            if type(spatials) is int:
+                coords.append((int(spatials / shape[1]), 
+                                spatials % shape[1]))
 
-        else:
-            for s in spatials:
-                coords.append((int(s / shape[1]), 
-                               s % shape[1]))
+            else:
+                for s in spatials:
+                    coords.append((int(s / shape[1]), 
+                                    s % shape[1]))
 
 
         def optimization_function(model_outputs, batch, indexes):
@@ -218,17 +220,18 @@ class Objective:
         layer = model.get_layer(layer)
         shape = layer.output.shape
 
-        _x = shape[1] // 2 if x is None else x
-        _y = shape[2] // 2 if x is None else y
+        if len(shape) > 2:
+            _x = shape[1] // 2 if x is None else x
+            _y = shape[2] // 2 if x is None else y
 
-        if type(channels) is int:
-            if channels < 0 or channels > shape[3]:
-                channels = shape[3] // 2
+            if type(channels) is int:
+                if channels < 0 or channels > shape[3]:
+                    channels = shape[3] // 2
 
-        else:
-            for i in range(len(channels)) :
-                if channels[i] < 0 or channels[i] > shape[3]:
-                    channels[i] = shape[3] // 2
+            else:
+                for i in range(len(channels)) :
+                    if channels[i] < 0 or channels[i] > shape[3]:
+                        channels[i] = shape[3] // 2
 
         def optimization_function(model_outputs, batch, indexes):
             loss = 0.0

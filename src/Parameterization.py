@@ -1,10 +1,10 @@
 import tensorflow as tf
 import numpy as np
-import tf_slim as slim
+import matplotlib.pyplot as plt
 
 from typing import Union, Tuple, List, Callable
 
-from src.Miscellaneous import composite_activation
+from src.Miscellaneous import composite_activation, relu_normalized
 
 
 imagenet_color_correlation = tf.cast(
@@ -63,32 +63,39 @@ def cppn(size: Tuple, batches: int,
          num_output_channels: int, 
          num_hidden_channels: int, 
          num_layers: int, 
-         activation_func: Callable, 
-         normalize: bool):
-  
+         activation_function: Callable, 
+         seed: int = 0):
+
     r = 3.0 ** 0.5
     coord_range_x = tf.linspace(-r, r, size[0])
     coord_range_y = tf.linspace(-r, r, size[1])
 
     y, x = tf.meshgrid(coord_range_x, coord_range_y, indexing = "ij")
-    net = tf.stack([tf.stack([x, y], -1)] * batches, 0)
 
-    for _ in range(num_layers):
-        x = slim.conv2d(net, num_hidden_channels, 
-                        kernel_size = (1, 1))
+    inputs = [x, y, tf.math.sqrt(x ** 2 + y ** 2)]
+    inputs = tf.transpose(tf.stack(inputs), [1, 2, 0])
+    inputs = tf.reshape(inputs, (inputs.shape[0] * inputs.shape[1], inputs.shape[-1]))
 
-        if normalize:
-            x = slim.instance_norm(x)
+    if seed is not None:
+        tf.random.set_seed(seed)
+    
+    net = tf.convert_to_tensor(inputs)
 
-        net = activation_func(x)
+    for i in range(0, num_layers):
+        if i == num_layers - 1:
+            W = tf.random.normal((net.shape[1], num_output_channels))
+        
+        else:
+            W = tf.random.normal((net.shape[1], num_hidden_channels))
+    
+        net = tf.matmul(net, W)
+        activation_function = tf.tanh 
+        net = activation_function(net)
 
-    rgb = slim.conv2d(
-        net,
-        num_output_channels,
-        kernel_size = (1, 1)
-    )
+    net = (1 + net) / 2.0
+    net = tf.cast(tf.reshape(net, (1, size[0], size[1], net.shape[-1])), dtype = tf.float32)
 
-    return rgb
+    return tf.tile(net, [batches, 1, 1, 1])
 
 
 def product(l):
@@ -242,20 +249,16 @@ class Parameterization:
                    num_hidden_channels: int = 24, 
                    num_layers: int = 8, 
                    activation_func: Callable = composite_activation, 
-                   normalize: bool = True,
-                   normalizer: str = 'sigmoid', 
-                   values_range: Tuple[float, float] = (0, 1)):
-        
-        values_range = (min(values_range), max(values_range))
-
+                   seed: int = 0):
+    
         images = cppn((size, size), batches, num_output_channels, 
                       num_hidden_channels, num_layers, 
-                      activation_func, normalize)
-
+                      activation_func, seed)
+        
         shape = (batches, 1, size, size, 3)
         images = tf.reshape(images, shape)
-
-        function = lambda images: to_valid_rgb(images, normalizer, values_range)
+              
+        function = lambda images: images
 
         return Parameterization(list(images), [function] * batches)
     
@@ -277,7 +280,9 @@ class Parameterization:
         for n in range(levels):
             k = 2 ** n
             pyramid += lowres_tensor(shape, batch_dims + (w // k, h // k, ch), sd = sd)
-        
+    
+        pyramid *= 255.0
+
         function = lambda pyramid: to_valid_rgb(pyramid, normalizer, values_range)
 
         return Parameterization(list(pyramid), [function] * batches)
@@ -290,7 +295,7 @@ class Parameterization:
                        num_hidden_channels: int = 24, 
                        num_layers: int = 8, 
                        activation_func: Callable = composite_activation, 
-                       normalize: bool = True,
+                       seed: int = 0,
                        normalizer: str = 'sigmoid', 
                        values_range: Tuple[float, float] = (0, 1)):
     
@@ -302,7 +307,7 @@ class Parameterization:
 
         images = cppn(frequencies.shape, batches * 2, num_output_channels, 
                       num_hidden_channels, num_layers, 
-                      activation_func, normalize)
+                      activation_func, seed)
         
         images = tf.reshape(images, shape)
 
@@ -333,7 +338,7 @@ class Parameterization:
             k = 2 ** n
             pyramid += lowres_tensor(shape, (batches, 2, 1, ) + (3, size // k, size // k), sd = sd)
         
-        images = tf.reshape(pyramid, shape)
+        images = tf.reshape(pyramid * 255.0, shape)
 
         fft_scale = get_fft_scale(size, size, decay_power = fft_decay)
 

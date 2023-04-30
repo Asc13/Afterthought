@@ -121,7 +121,8 @@ def run_activation_atlas(path: str,
                          model: Wrapper,
                          layer: Union[int, str],
                          steps: int = 256,
-                         samples: int = 5,
+                         batches: int = 10,
+                         samples: int = -1,
                          image_shape: Optional[Tuple] = (512, 512),
                          verbose = True) -> tf.Tensor:
     
@@ -139,23 +140,11 @@ def run_activation_atlas(path: str,
             print([(class_name, prob) for (_, class_name, prob) in predictions])
     
         acts = feature_extractor(image)[0]
-
         acts_flat = tf.reshape(acts, ([-1] + [acts.shape[2]]))
+        indexes = np.arange(acts_flat.shape[0])
 
-        parameterization = Parameterization.image_fft(image_shape[0], batches = acts_flat.shape[0])
-
-        objectives = Objective.sum([
-            Objective.direction(model, layer, vectors = np.asarray(v), batches = n)
-            for n, v in enumerate(acts_flat)
-        ])
-
-        if samples != -1:
-            r = random.sample(range(0, acts_flat.shape[0]), samples)
-
-            parameterization.images = [parameterization.images[nd] for nd in r]
-            objectives.layers = [objectives.layers[nd] for nd in r]
-
-        regularizers = []
+        act_split = np.array_split(acts_flat, batches)
+        split = np.array_split(indexes, batches)
 
         transformations = [
             padding(16),
@@ -164,13 +153,28 @@ def run_activation_atlas(path: str,
             jitter(4, seed = 0) 
         ]
 
-        images = run(objectives, parameterization, steps = steps, 
-                     regularizers = regularizers,
-                     transformations = transformations,
-                     image_shape = image_shape,
-                     verbose = verbose)
-        
-        return images
+        images_flat = []
+
+        for n, s in enumerate(split):
+            if samples != -1 and n < samples:
+                parameterization = Parameterization.image_fft(image_shape[0], batches = len(s))
+
+                objectives = Objective.sum([
+                    Objective.direction(model, layer, vectors = np.asarray(v), batches = i)
+                    for i, v in enumerate(act_split[n])
+                ])
+
+                images = run(objectives, parameterization, steps = steps, 
+                             transformations = transformations,
+                             image_shape = image_shape,
+                             verbose = verbose)
+                
+                for image in images:
+                    images_flat.append(image)
+
+        images_flat = np.array(images_flat)
+
+        return images_flat
 
 
 def run_activation_layer(path: str,
