@@ -359,3 +359,33 @@ class Objective:
 
         return Objective(model, [layer.output], [optimization_function], [[0]])
     
+
+    @staticmethod
+    def activation_difference(model: Wrapper,
+                              layers: List[Union[str, int]],
+                              transform: Callable = None, 
+                              index: int = 1):
+        outs = []
+
+        for l in layers:
+            outs.append(model.get_layer(l).output)
+
+        def optimization_function(model_outputs, batch, indexes):
+            loss = 0.0
+
+            if batch == 0:
+                activations = [model_outputs[index][i] for i in indexes]
+                transfer_activations = [model_outputs[0][i] for i in indexes]
+
+                if transform is not None:
+                    activations = [transform(activation) for activation in activations]
+                    transfer_activations = [transform(activation) for activation in transfer_activations]
+
+                def mean_L1(a, b):
+                    return tf.reduce_mean(tf.abs(a - b))
+
+                return tf.add_n([mean_L1(a, b) for a, b in zip(activations, transfer_activations)])
+
+            return tf.constant(loss)
+
+        return Objective(model, outs, [optimization_function], [list(range(0, len(outs)))])

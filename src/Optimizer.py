@@ -12,7 +12,7 @@ from tensorflow.keras import Model, applications, preprocessing
 from src.Objective import Objective
 from src.Parameterization import Parameterization
 from src.Transformation import *
-from src.Miscellaneous import load_image
+from src.Miscellaneous import load_image, gram_matrix
 from src.Wrapper import *
 
 
@@ -25,6 +25,7 @@ def run(objective: Objective,
         regularizers: List[Callable] = [],
         image_shape: Optional[Tuple] = (512, 512),
         threshold: Optional[int] = None,
+        only_first_batch: Optional[bool] = False,
         verbose = True) -> List[tf.Tensor]:
 
     model, objective_function, input_shape = objective.compile(len(parameterization.images))
@@ -46,8 +47,8 @@ def run(objective: Objective,
     image_param = parameterization.function
     input = parameterization.images
     
-    ascent = _gradient_ascent(objective_function, image_param, shape, 
-                              transformations, regularizers)
+    ascent = gradient_ascent(objective_function, image_param, shape, 
+                             transformations, regularizers, only_first_batch)
 
     images = []
     inputs = []
@@ -63,7 +64,8 @@ def run(objective: Objective,
 
         for batch in range(shape[0]):
             if gradients[batch] is not None:
-                optimizer.apply_gradients([(-gradients[batch], inputs[batch])])
+                if batch == 0:
+                    optimizer.apply_gradients([(-gradients[batch], inputs[batch])])
 
             last_iteration = step == steps - 1
             should_save = threshold and (step + 1) % threshold == 0
@@ -75,11 +77,12 @@ def run(objective: Objective,
     return images
 
 
-def _gradient_ascent(objective_function : Callable,
-                     image_param: Callable,
-                     input_shape: Tuple,
-                     transformations: Callable,
-                     regularizers: List[Callable]) -> Callable:
+def gradient_ascent(objective_function : Callable,
+                    image_param: Callable,
+                    input_shape: Tuple,
+                    transformations: Callable,
+                    regularizers: List[Callable],
+                    only_first_batch: bool) -> Callable:
     
     @tf.function
     def step(model, inputs):
@@ -93,7 +96,15 @@ def _gradient_ascent(objective_function : Callable,
                 i = image_param[index](inputs[index])
 
                 if transformations:
-                    i = transformations(i)
+                    if only_first_batch and index == 0:
+                        i = transformations(i)
+
+                    elif not only_first_batch:
+                        i = transformations(i)
+
+                    else:
+                        model_shape = model.input.shape
+                        i = tf.image.resize(i, tf.cast([model_shape[1], model_shape[2]], tf.int32))
 
                 model_outputs.append(model(i))
 
@@ -227,4 +238,40 @@ def run_activation_layer(path: str,
                  image_shape = image_shape,
                  verbose = verbose)
 
+    return images
+
+
+def run_style_transfer(image_path: str,
+                       style_path: str,
+
+                       model: Wrapper,
+                       layers: List[Union[int, str]],
+                       style_layers: List[Union[int, str]],
+                       steps: int = 256,
+                       image_shape: Optional[Tuple] = (512, 512),
+                       verbose = True) -> tf.Tensor:
+    
+    image = load_image((1,) + image_shape + (3,), image_path)
+    style = load_image((1,) + image_shape + (3,), style_path)
+
+    power = 1e2
+
+    objective = -power * Objective.activation_difference(model, layers, index = 1) -\
+                Objective.activation_difference(model, style_layers, transform = gram_matrix, index = 2)
+
+    transformations = [
+        padding(16),
+        jitter(8, seed = 0),
+        scale((0.92, 0.96), seed = 0),
+        jitter(4, seed = 0)
+    ]
+
+    parameterization = Parameterization.image_style_transfer(image, style)
+
+    images = run(objective, parameterization, 
+                 transformations = transformations,
+                 steps = steps, learning_rate = 0.1,
+                 verbose = verbose,
+                 only_first_batch = True)
+       
     return images

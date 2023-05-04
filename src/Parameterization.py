@@ -376,3 +376,22 @@ class Parameterization:
         function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale) + shared, normalizer, values_range)
 
         return Parameterization(list(images), [function] * batches)
+    
+
+    @staticmethod
+    def image_style_transfer(image: tf.Tensor, style: tf.Tensor,
+                             std: float = 0.01, fft_decay: float = 0.85,
+                             normalizer: str = 'sigmoid', 
+                             values_range: Tuple[float, float] = (0, 1)):
+
+        values_range = (min(values_range), max(values_range))
+
+        shape = (1,) + image.shape
+
+        images = fft_image(shape, std)  
+        fft_scale = get_fft_scale(shape[2], shape[3], decay_power = fft_decay)
+
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale), normalizer, values_range)
+        identity = lambda style: style
+
+        return Parameterization(list([images[0], image, style]), [function, identity, identity])

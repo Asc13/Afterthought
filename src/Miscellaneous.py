@@ -113,6 +113,18 @@ def blur_conv(x, width = 3):
   return conv_k(x) / conv_k(tf.ones_like(x))
 
 
+def gram_matrix(image: tf.Tensor, normalize: bool = True) -> tf.Tensor:
+    channels = tf.shape(image)[-1]
+    flatten = tf.reshape(image, [-1, channels])
+    gram_matrix = tf.matmul(flatten, flatten, transpose_a = True)
+
+    if normalize:
+        length = tf.shape(flatten)[0]
+        gram_matrix /= tf.cast(length, tf.float32)
+
+    return gram_matrix
+
+
 def composite_activation(x):
   x = tf.atan(x)
 
