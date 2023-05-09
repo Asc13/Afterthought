@@ -12,7 +12,7 @@ from tensorflow.keras import Model, applications, preprocessing
 from src.Objective import Objective
 from src.Parameterization import Parameterization
 from src.Transformation import *
-from src.Miscellaneous import load_image, gram_matrix
+from src.Miscellaneous import *
 from src.Wrapper import *
 
 
@@ -64,8 +64,7 @@ def run(objective: Objective,
 
         for batch in range(shape[0]):
             if gradients[batch] is not None:
-                if batch == 0:
-                    optimizer.apply_gradients([(-gradients[batch], inputs[batch])])
+                optimizer.apply_gradients([(-gradients[batch], inputs[batch])])
 
             last_iteration = step == steps - 1
             should_save = threshold and (step + 1) % threshold == 0
@@ -216,14 +215,9 @@ def run_activation_layer(path: str,
 
         objectives.append(Objective.direction(model, e, np.array(acts), batches = n))
     
-    objective = objectives[0]
-
-    for o in range(1, len(objectives)):
-        objective += objectives[o]
+    objectives = Objective.sum(objectives)
 
     parameterization = Parameterization.image_fft(image_shape[0], batches = len(layers))
-
-    regularizers = []
 
     transformations = [
         padding(16),
@@ -232,8 +226,7 @@ def run_activation_layer(path: str,
         jitter(4, seed = 0) 
     ]
 
-    images = run(objective, parameterization, steps = steps, 
-                 regularizers = regularizers,
+    images = run(objectives, parameterization, steps = steps, 
                  transformations = transformations,
                  image_shape = image_shape,
                  verbose = verbose)
@@ -243,7 +236,6 @@ def run_activation_layer(path: str,
 
 def run_style_transfer(image_path: str,
                        style_path: str,
-
                        model: Wrapper,
                        layers: List[Union[int, str]],
                        style_layers: List[Union[int, str]],
@@ -275,3 +267,72 @@ def run_style_transfer(image_path: str,
                  only_first_batch = True)
        
     return images
+
+
+
+def run_neuron_interaction(model: Wrapper,
+                           neurons: List[Tuple], 
+                           steps: int = 256,
+                           image_shape: Optional[Tuple] = (512, 512),
+                           verbose = True):
+  
+    N = len(neurons)
+    parameterization = Parameterization.image_fft(image_shape[0], batches = N ** 2)
+
+    objective = lambda n, i: 0.2 * Objective.channel(model, neurons[n][0], neurons[n][1], batches = i) +\
+                                   Objective.neuron(model, neurons[n][0], neurons[n][1], batches = i)
+    
+    objectives = Objective.sum([objective(n, N * n + m) + objective(m, N * n + m) 
+                                for n in range(N) for m in range(N)])
+    
+    images = run(objectives, parameterization, steps = steps, 
+                 image_shape = image_shape, verbose = verbose)
+  
+    return images
+
+
+def run_feature_inversion(path: str,
+                          model: Wrapper,
+                          layers: List[Union[int, str]],
+                          power: float = 0,
+                          steps: int = 256,
+                          image_shape: Optional[Tuple] = (512, 512),
+                          verbose = True) -> tf.Tensor:
+    
+    image = load_image(model.get_input_shape(), path)
+
+    if verbose:
+        plt.imshow(image[0])
+        plt.show()
+
+        prediction_probabilities = model.predict(image)
+        predictions = model.decode(prediction_probabilities.numpy())
+    
+        print([(class_name, prob) for (_, class_name, prob) in predictions])
+    
+    objectives = []
+
+    for n, e in enumerate(layers):
+        objectives.append(Objective.dot_comparison(model, e, batches = n, power = power))
+    
+    objectives = Objective.sum(objectives)
+
+    parameterization = Parameterization.image(image, image_shape[0], batches = len(layers))
+
+    transformations = [
+        padding(16),
+        jitter(8, seed = 0),
+        scale((0.92, 0.96), seed = 0),
+        jitter(4, seed = 0) 
+    ]
+
+    images = run(objectives, parameterization, steps = steps, 
+                 transformations = transformations,
+                 image_shape = image_shape,
+                 verbose = verbose)
+
+    return images
+
+    
+
+    

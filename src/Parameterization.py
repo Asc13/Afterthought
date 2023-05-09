@@ -210,6 +210,20 @@ class Parameterization:
             function = self.function + new.function
         )
     
+    @staticmethod
+    def image(image: tf.Tensor, size: int, batches: int = 1,
+              normalizer: str = 'sigmoid', 
+              values_range: Tuple[float, float] = (0, 1)):
+
+        values_range = (min(values_range), max(values_range))
+        
+        images = tf.tile(tf.image.resize(image, [size, size]), [batches, 1, 1, 1])
+        images = tf.reshape(images, (images.shape[0], 1,) + images.shape[1:])
+
+        function = lambda images: to_valid_rgb(images, normalizer, values_range)
+
+        return Parameterization(list(images), [function] * batches)
+    
 
     @staticmethod
     def image_normal(size: int, batches: int = 1, std : float = 0.01,

@@ -30,7 +30,12 @@ class Objective:
         else:
             layers = self.layers + new.layers
             function = self.function + new.function
-            indexes = self.indexes + [list(map(lambda x: x + self.indexes[-1][-1] + 1, new.indexes[-1]))]
+            
+            indexes = self.indexes
+            last = self.indexes[-1][-1]
+
+            for i in new.indexes:
+                indexes += [list(map(lambda x: x + last + 1, i))]
 
         return Objective(
             self.model,
@@ -57,8 +62,13 @@ class Objective:
         else:
             layers = self.layers + new.layers
             function = list(map(lambda m: (lambda x, y, z: m(x, y, z) * new.function[0](x, y, z)), self.function)) * 2
-            indexes =  self.indexes + [list(map(lambda x: x + self.indexes[-1][-1] + 1, new.indexes[-1]))]
-    
+            
+            indexes = self.indexes
+            last = self.indexes[-1][-1]
+
+            for i in new.indexes:
+                indexes += [list(map(lambda x: x + last + 1, i))]
+
         return Objective(
             self.model,
             layers = layers,
@@ -76,21 +86,12 @@ class Objective:
 
 
     def sum(new):
-        layers = []
-        function = []
-        indexes = []
+        i = new[0]
 
-        for n in new:
-            layers += n.layers
-            function += n.function
-            indexes += n.indexes
+        for n in range(1, len(new)):
+            i += new[n]
 
-        return Objective(
-            new[0].model,
-            layers = layers,
-            function = function,
-            indexes = indexes
-        )
+        return i
     
 
     def compile(self, batches) -> Tuple[Model, Callable, Tuple]:
@@ -154,7 +155,7 @@ class Objective:
               ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
 
                 model_outputs = model_outputs[batch][indexes[0]]
-
+                
                 if type(channels) is int:
                     return tf.reduce_mean(model_outputs[..., channels])
                 
@@ -183,12 +184,12 @@ class Objective:
         if len(shape) > 2:
             if type(spatials) is int:
                 coords.append((int(spatials / shape[1]), 
-                                spatials % shape[1]))
+                                   spatials % shape[1]))
 
             else:
                 for s in spatials:
                     coords.append((int(s / shape[1]), 
-                                    s % shape[1]))
+                                       s % shape[1]))
 
 
         def optimization_function(model_outputs, batch, indexes):
@@ -389,3 +390,30 @@ class Objective:
             return tf.constant(loss)
 
         return Objective(model, outs, [optimization_function], [list(range(0, len(outs)))])
+    
+
+    @staticmethod
+    def dot_comparison(model: Wrapper,
+                       layer: Union[str, int],
+                       batches: Union[int, List[int]] = -1,
+                       power: float = 0.0):
+        
+        layer = model.get_layer(layer)
+
+        def optimization_function(model_outputs, batch, indexes):
+            loss = 0.0
+            
+            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
+              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+
+                model_outputs = model_outputs[batch][indexes[0]]
+
+                dot = tf.reduce_sum(model_outputs ** 2)
+                magnitude = tf.sqrt(tf.reduce_sum(model_outputs ** 2))
+                cossim = dot / (1e-6 + magnitude)
+                
+                return dot * cossim ** power
+        
+            return tf.constant(loss)
+        
+        return Objective(model, [layer.output], [optimization_function], [[0]])
