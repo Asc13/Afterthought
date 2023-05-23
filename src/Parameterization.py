@@ -1,10 +1,10 @@
 import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
 
 from typing import Union, Tuple, List, Callable
 
-from src.Miscellaneous import composite_activation, relu_normalized
+from src.Miscellaneous import *
+from src.Transformation import apply_kernel
 
 
 imagenet_color_correlation = tf.cast(
@@ -38,11 +38,7 @@ def get_fft_scale(width: int, height: int, decay_power: float = 1.0) -> tf.Tenso
     return tf.convert_to_tensor(fft_scale, dtype = tf.complex64)
 
 
-def fft_to_rgb(image: tf.Tensor, shape: Tuple, 
-               fft_scale: tf.Tensor) -> tf.Tensor:
-    
-    batch, _, width, height, channels = shape
-
+def fft_to_rgb(image: tf.Tensor, fft_scale: tf.Tensor) -> tf.Tensor:
     spectrum = tf.complex(image[0], image[1]) * fft_scale
 
     image = tf.signal.irfft2d(spectrum)
@@ -82,6 +78,7 @@ def cppn(size: Tuple, batches: int,
     net = tf.convert_to_tensor(inputs)
 
     for i in range(0, num_layers):
+
         if i == num_layers - 1:
             W = tf.random.normal((net.shape[1], num_output_channels))
         
@@ -89,12 +86,12 @@ def cppn(size: Tuple, batches: int,
             W = tf.random.normal((net.shape[1], num_hidden_channels))
     
         net = tf.matmul(net, W)
-        activation_function = tf.tanh 
         net = activation_function(net)
 
     net = (1 + net) / 2.0
-    net = tf.cast(tf.reshape(net, (1, size[0], size[1], net.shape[-1])), dtype = tf.float32)
-
+    net = tf.nn.sigmoid(net)
+    net = tf.cast(tf.reshape(net, (1,  size[0],  size[1], num_output_channels)), dtype = tf.float32)
+    
     return tf.tile(net, [batches, 1, 1, 1])
 
 
@@ -252,7 +249,7 @@ class Parameterization:
         images = fft_image(shape, std)  
         fft_scale = get_fft_scale(shape[2], shape[3], decay_power = fft_decay)
         
-        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale), normalizer, values_range)
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, fft_scale), normalizer, values_range)
 
         return Parameterization(list(images), [function] * batches)
 
@@ -262,16 +259,16 @@ class Parameterization:
                    num_output_channels: int = 3, 
                    num_hidden_channels: int = 24, 
                    num_layers: int = 8, 
-                   activation_func: Callable = composite_activation, 
+                   activation_func: Callable = composite_activation,
                    seed: int = 0):
-    
+
         images = cppn((size, size), batches, num_output_channels, 
                       num_hidden_channels, num_layers, 
                       activation_func, seed)
         
         shape = (batches, 1, size, size, 3)
         images = tf.reshape(images, shape)
-              
+        
         function = lambda images: images
 
         return Parameterization(list(images), [function] * batches)
@@ -309,12 +306,8 @@ class Parameterization:
                        num_hidden_channels: int = 24, 
                        num_layers: int = 8, 
                        activation_func: Callable = composite_activation, 
-                       seed: int = 0,
-                       normalizer: str = 'sigmoid', 
-                       values_range: Tuple[float, float] = (0, 1)):
+                       seed: int = 0):
     
-        values_range = (min(values_range), max(values_range))
-
         frequencies = fft_2d_freq(size, size)
 
         shape = (batches, 2, 1, 3) + frequencies.shape
@@ -327,9 +320,7 @@ class Parameterization:
 
         fft_scale = get_fft_scale(size, size, decay_power = fft_decay)
 
-        shape = (batches, 1, size, size, 3)
-
-        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale), normalizer, values_range)
+        function = lambda images: fft_to_rgb(images, fft_scale)
 
         return Parameterization(list(images), [function] * batches)
 
@@ -358,7 +349,7 @@ class Parameterization:
 
         shape = (batches, 1, size, size, 3)
 
-        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale), normalizer, values_range)
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, fft_scale), normalizer, values_range)
 
         return Parameterization(list(images), [function] * batches)
 
@@ -387,7 +378,7 @@ class Parameterization:
         shape = (batches, 1, size, size, 3)
         images = fft_image(shape)
         
-        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale) + shared, normalizer, values_range)
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, fft_scale) + shared, normalizer, values_range)
 
         return Parameterization(list(images), [function] * batches)
     
@@ -405,7 +396,7 @@ class Parameterization:
         images = fft_image(shape, std)  
         fft_scale = get_fft_scale(shape[2], shape[3], decay_power = fft_decay)
 
-        function = lambda images: to_valid_rgb(fft_to_rgb(images, shape, fft_scale), normalizer, values_range)
+        function = lambda images: to_valid_rgb(fft_to_rgb(images, fft_scale), normalizer, values_range)
         identity = lambda style: style
 
         return Parameterization(list([images[0], image, style]), [function, identity, identity])

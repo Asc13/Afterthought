@@ -14,6 +14,7 @@ from src.Parameterization import Parameterization
 from src.Transformation import *
 from src.Miscellaneous import *
 from src.Wrapper import *
+from src.VAE import VAE
 
 
 def run(objective: Objective,
@@ -335,4 +336,81 @@ def run_feature_inversion(path: str,
 
     
 
+def run_dgn_am(vae_path: str, 
+               model: Wrapper,
+               unit: int,
+               optimizer: Optional[Optimizer] = None,
+               transformations: Union[List[Callable], str] = 'standard',
+               regularizers: List[Callable] = [],
+               latent_dimension: int = 256,
+               num_classes: int = 200,
+               steps: int = 256,
+               learning_rate: float = 0.05,
+               image_shape: Tuple = (512, 512),
+               verbose: bool = True) -> tf.Tensor:
+
+    vae = VAE(num_classes, latent_dimension, 64, (64, 64, 3))
+    vae.load(vae_path)
+
+    @tf.function
+    def step(model, input):
+        with tf.GradientTape() as tape:
+            tape.watch(input)
+
+            input = parameterization.function[0](input)
+
+            if transformations:
+                input = [transformations(input[0])]
+
+            loss = tf.reduce_mean(model(input[0])[..., unit])
+            
+            for r in regularizers:
+                loss += r(input[0])
+
+            gradients = tape.gradient(loss, input)
+
+        return gradients
     
+    if optimizer is None:
+        optimizer = Adam(learning_rate)
+
+    _, h, w, _ = model.get_input_shape()
+
+    if transformations == 'standard':
+        transformations = standard((h, w), h)
+
+    else:
+        transformations = composition((h, w), transformations)
+
+    parameterization = Parameterization.image_normal(64)
+
+    layer = model.get_layer(-1)    
+    feature_extractor = Model(inputs = model.get_input(), outputs = layer.output)  
+    
+    one_hot = np.zeros(200)
+    one_hot[unit] = 1
+    one_hot = np.array([one_hot])
+
+    input = parameterization.images[0]
+    z, _, _ = vae.encoder(input)
+
+    for i in range(steps):
+        input = vae.decoder([z, one_hot]).numpy()
+
+        input = tf.image.resize(input, [h, w])
+        input = tf.reshape(input, (1, ) + input.shape)
+        input = [tf.Variable(input[0])]
+
+        gradients = step(feature_extractor, input)
+        optimizer.apply_gradients([(-gradients[0], input[0])])
+
+        input = tf.image.resize(input[0], [64, 64])
+
+        z, _, _ = vae.encoder(input)
+
+        if verbose and i % 10 == 0:
+            plt.imshow(input[0])
+            plt.show()
+
+    return [tf.image.resize(input, [image_shape[0], image_shape[1]])]
+

@@ -143,3 +143,13 @@ class DGN_AM():
 
         print('Discriminator real accuracy: ', real_accuracy)
         print('Discriminator fake accuracy: ', fake_accuracy)
+
+
+    def save(self, path: str):
+        self.generator.save(path + '/' + self.generator.name)
+        self.discriminator.save(path + '/' + self.discriminator.name)
+
+
+    def load(self, path: str):
+        self.generator.load_weights(path + '/' + self.generator.name)
+        self.discriminator.load_weights(path + '/' + self.discriminator.name)

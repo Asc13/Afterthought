@@ -128,13 +128,13 @@ def gram_matrix(image: tf.Tensor, normalize: bool = True) -> tf.Tensor:
 def composite_activation(x):
   x = tf.atan(x)
 
-  return tf.concat([x / 0.67, (x * x) / 0.6], -1)
+  return (x * x) / 0.6
 
 
 def composite_activation_unbiased(x):
   x = tf.atan(x)
 
-  return tf.concat([x / 0.67, (x * x - 0.45) / 0.396], -1)
+  return (x * x - 0.45) / 0.396
 
 
 def relu_normalized(x):
