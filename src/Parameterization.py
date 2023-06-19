@@ -88,11 +88,14 @@ def cppn(size: Tuple, batches: int,
         net = tf.matmul(net, W)
         net = activation_function(net)
 
-    net = (1 + net) / 2.0
-    net = tf.nn.sigmoid(net)
     net = tf.cast(tf.reshape(net, (1,  size[0],  size[1], num_output_channels)), dtype = tf.float32)
     
     return tf.tile(net, [batches, 1, 1, 1])
+
+
+def cppn_correction(net):
+    net = recorrelate_colors(net)
+    return (1 + tf.nn.sigmoid(net)) / 2.0
 
 
 def product(l):
@@ -211,6 +214,19 @@ class Parameterization:
     def image(image: tf.Tensor, size: int, batches: int = 1,
               normalizer: str = 'sigmoid', 
               values_range: Tuple[float, float] = (0, 1)):
+        '''
+        Inputs
+        ----------
+        image - Image to use as parameterization tensor
+
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        normalizer - Color normalization function (e.g: sigmoid)
+
+        values_range - Image values range (e.g: between 0 and 1)
+        ''' 
 
         values_range = (min(values_range), max(values_range))
         
@@ -224,12 +240,27 @@ class Parameterization:
 
     @staticmethod
     def image_normal(size: int, batches: int = 1, std : float = 0.01,
-                     normalizer: str = 'sigmoid', 
-                     values_range: Tuple[float, float] = (0, 1)):
+                     seed: int = 0, normalizer: str = 'sigmoid', 
+                     values_range: Tuple[float, float] = (0, 1),):
+        '''
+        Inputs
+        ----------
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        std - Noise normal function standard deviation
+
+        seed - Noise normal function generation seed
+
+        normalizer - Color normalization function (e.g: sigmoid)
+
+        values_range - Image values range (e.g: between 0 and 1)
+        ''' 
 
         values_range = (min(values_range), max(values_range))
 
-        images = tf.random.normal((batches, 1, size, size, 3), std, dtype = tf.float32)
+        images = tf.random.normal((batches, 1, size, size, 3), std, dtype = tf.float32, seed = seed)
 
         function = lambda images: to_valid_rgb(images, normalizer, values_range)
 
@@ -241,6 +272,21 @@ class Parameterization:
                   std: float = 0.01, fft_decay: float = 0.85,
                   normalizer: str = 'sigmoid', 
                   values_range: Tuple[float, float] = (0, 1)):
+        '''
+        Inputs
+        ----------
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        std - Noise normal function standard deviation
+
+        fft_decay - Fast fourier transform decay power
+
+        normalizer - Color normalization function (e.g: sigmoid)
+
+        values_range - Image values range (e.g: between 0 and 1)
+        ''' 
 
         values_range = (min(values_range), max(values_range))
 
@@ -261,6 +307,23 @@ class Parameterization:
                    num_layers: int = 8, 
                    activation_func: Callable = composite_activation,
                    seed: int = 0):
+        '''
+        Inputs
+        ----------
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        num_output_channels - CPPN network output channels number
+
+        num_hidden_channels - CPPN network hidden channels number
+
+        num_layers - CPPN network layers (iterations) number
+
+        activation_func - CPPN network final activation function (e.g: tanh)
+        
+        seed - CPPN network noise normal function generation seed
+        '''
 
         images = cppn((size, size), batches, num_output_channels, 
                       num_hidden_channels, num_layers, 
@@ -269,7 +332,7 @@ class Parameterization:
         shape = (batches, 1, size, size, 3)
         images = tf.reshape(images, shape)
         
-        function = lambda images: images
+        function = lambda images: cppn_correction(activation_func(images))
 
         return Parameterization(list(images), [function] * batches)
     
@@ -279,7 +342,22 @@ class Parameterization:
                                 levels: int = 4, sd: int = 0.01,
                                 normalizer: str = 'sigmoid', 
                                 values_range: Tuple[float, float] = (0, 1)):
-        
+        '''
+        Inputs
+        ----------
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        levels - Pyramiding levels (iterations)
+
+        sd - Noise normal function standard deviation
+
+        normalizer - Color normalization function (e.g: sigmoid)
+
+        values_range - Image values range (e.g: between 0 and 1)
+        ''' 
+            
         values_range = (min(values_range), max(values_range))
 
         shape = (batches, 1, size, size, 3)
@@ -307,7 +385,26 @@ class Parameterization:
                        num_layers: int = 8, 
                        activation_func: Callable = composite_activation, 
                        seed: int = 0):
-    
+        '''
+        Inputs
+        ----------
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        fft_decay - Fast fourier transform decay power
+
+        num_output_channels - CPPN network output channels number
+
+        num_hidden_channels - CPPN network hidden channels number
+
+        num_layers - CPPN network layers (iterations) number
+
+        activation_func - CPPN network final activation function (e.g: tanh)
+        
+        seed - CPPN network noise normal function generation seed
+        '''
+
         frequencies = fft_2d_freq(size, size)
 
         shape = (batches, 2, 1, 3) + frequencies.shape
@@ -331,7 +428,24 @@ class Parameterization:
                                     fft_decay: float = 0.85,
                                     normalizer: str = 'sigmoid', 
                                     values_range: Tuple[float, float] = (0, 1)):
-        
+        '''
+        Inputs
+        ----------
+        size - Image resolution ([size, size, 3])
+
+        batches - Number of batches/repetitions of the image tensor
+
+        levels - Pyramiding levels (iterations)
+
+        sd - Noise normal function standard deviation
+
+        fft_decay - Fast fourier transform decay power
+
+        normalizer - Color normalization function (e.g: sigmoid)
+
+        values_range - Image values range (e.g: between 0 and 1)
+        ''' 
+
         values_range = (min(values_range), max(values_range))
         
         frequencies = fft_2d_freq(size, size)
@@ -355,39 +469,25 @@ class Parameterization:
 
 
     @staticmethod
-    def shared_parameterization(size: int, dividers: List[int], 
-                                batches: int = 1,
-                                fft_decay: float = 0.85,
-                                normalizer: str = 'sigmoid', 
-                                values_range: Tuple[float, float] = (0, 1)):
-        
-        values_range = (min(values_range), max(values_range))
-        
-        frequencies = fft_2d_freq(size, size)
-        shape = (batches, 2, 1, 3) + frequencies.shape
-
-        shared = []
-
-        for b in range(batches):
-            shared.append(lowres_tensor((batches, size, size, 3), (1, size // dividers[b], size // dividers[b], 3)))
-        
-        shared = sum(shared)
-        
-        fft_scale = get_fft_scale(size, size, decay_power = fft_decay)
-
-        shape = (batches, 1, size, size, 3)
-        images = fft_image(shape)
-        
-        function = lambda images: to_valid_rgb(fft_to_rgb(images, fft_scale) + shared, normalizer, values_range)
-
-        return Parameterization(list(images), [function] * batches)
-    
-
-    @staticmethod
     def image_style_transfer(image: tf.Tensor, style: tf.Tensor,
                              std: float = 0.01, fft_decay: float = 0.85,
                              normalizer: str = 'sigmoid', 
                              values_range: Tuple[float, float] = (0, 1)):
+        '''
+        Inputs
+        ----------
+        image - Image to use as parameterization tensor
+
+        style - Style image to use as parameterization tensor
+
+        std - Noise normal function standard deviation
+
+        fft_decay - Fast fourier transform decay power
+
+        normalizer - Color normalization function (e.g: sigmoid)
+
+        values_range - Image values range (e.g: between 0 and 1)
+        ''' 
 
         values_range = (min(values_range), max(values_range))
 

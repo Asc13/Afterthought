@@ -8,6 +8,7 @@ from src.Miscellaneous import blur_conv
 
 
 def L1(factor: float = 1.0) -> Callable:
+    
     def reg(image: tf.Tensor) -> tf.Tensor:
         return factor * tf.reduce_mean(tf.abs(image))
     

@@ -116,6 +116,18 @@ class Objective:
               deepDream: bool = False,
               batches: Union[int, List[int]] = -1):
 
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        deepDream - Flag to raise the activation to 2
+
+        bacthes - List of batches that use this objetive (-1 to use all)
+        ''' 
+                
         layer = model.get_layer(layer)
         power = 2.0 if deepDream else 1.0
 
@@ -134,6 +146,18 @@ class Objective:
                 layer: Union[str, int],
                 channels: Union[int, List[int]],
                 batches: Union[int, List[int]] = -1):
+
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        channel - Channel list to optimize (activations shape = (x, y, channels))
+
+        bacthes - List of batches that use this objetive (-1 to use all)
+        ''' 
 
         layer = model.get_layer(layer)
         shape = layer.output.shape
@@ -175,6 +199,17 @@ class Objective:
                 layer: Union[str, int],
                 spatials: Union[int, List[int]],
                 batches: Union[int, List[int]] = -1):
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        spatials - Spatial list to optimize
+
+        bacthes - List of batches that use this objetive (-1 to use all)
+        ''' 
 
         layer = model.get_layer(layer)
         shape = layer.output.shape
@@ -217,6 +252,19 @@ class Objective:
                x: int = None, 
                y: int = None, 
                batches: Union[int, List[int]] = -1):
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        channels - Channel list to optimize which the neurons come from
+
+        x and y - Neuron coordinates inside the channel (activations shape = (x, y, channels))
+
+        bacthes - List of batches that use this objetive (-1 to use all)
+        ''' 
 
         layer = model.get_layer(layer)
         shape = layer.output.shape
@@ -262,7 +310,20 @@ class Objective:
                   vectors: Union[tf.Tensor, List[tf.Tensor]],
                   batches: Union[int, List[int]] = -1,
                   power: float = 0.0):
-        
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        vectors - Vectors that define the direction to each channel tensor
+
+        bacthes - List of batches that use this objetive (-1 to use all)
+
+        power - Dot product power
+        ''' 
+                
         layer = model.get_layer(layer)
         vectors = vectors.astype("float32")
 
@@ -294,6 +355,19 @@ class Objective:
                             channel1: int,
                             layer2: Union[str, int],
                             channel2: int):
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer1 - Interpolation first extreme layer to optimize (name or index)
+
+        channel1 - Interpolation first extreme channel to optimize
+
+        layer2 - Interpolation second extreme layer to optimize (name or index)
+
+        channel2 - Interpolation second extreme channel to optimize
+        ''' 
 
         layer1 = model.get_layer(layer1)
         layer2 = model.get_layer(layer2)
@@ -318,7 +392,14 @@ class Objective:
     @staticmethod
     def diversity(model: Wrapper,
                   layer: Union[str, int]):
-        
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+        '''
+
         layer = model.get_layer(layer)
         
         def optimization_function(model_outputs, batch, indexes):
@@ -344,6 +425,15 @@ class Objective:
     def alignment(model: Wrapper,
                   layer: Union[str, int],
                   decay: int = 2):
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        decay - Decay penalty as batches move on
+        '''
 
         layer = model.get_layer(layer)
 
@@ -366,6 +456,18 @@ class Objective:
                               layers: List[Union[str, int]],
                               transform: Callable = None, 
                               index: int = 1):
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layers - Layers to optimize (name or index)
+
+        transform - transform function for style tranfer
+
+        index - batch index to optimize for the activations
+        ''' 
+
         outs = []
 
         for l in layers:
@@ -397,7 +499,18 @@ class Objective:
                        layer: Union[str, int],
                        batches: Union[int, List[int]] = -1,
                        power: float = 0.0):
-        
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layers - Layer to optimize (name or index)
+
+        bacthes - List of batches that use this objetive (-1 to use all)
+
+        power - Dot product power
+        ''' 
+
         layer = model.get_layer(layer)
 
         def optimization_function(model_outputs, batch, indexes):
