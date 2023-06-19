@@ -9,6 +9,14 @@ from src.Miscellaneous import kernel_fabricator, motion_kernel, blur_edge
 
 
 def blur_T(sigma_range: Tuple[float, float] = (1.0, 2.0), kernel_size: int = 10) -> Callable:
+    '''
+    Inputs
+    ----------
+    sigma_range - 
+
+    kernel_size - 
+    '''
+
     uniform = tf.linspace(-(kernel_size - 1) / 2., (kernel_size - 1) / 2., kernel_size)
     uniform_xx, uniform_yy = tf.meshgrid(uniform, uniform)
 
@@ -31,6 +39,14 @@ def blur_T(sigma_range: Tuple[float, float] = (1.0, 2.0), kernel_size: int = 10)
 
 
 def jitter(delta: int = 6, seed = None) -> Callable:
+    '''
+    Inputs
+    ----------
+    delta - 
+
+    seed - 
+    '''
+        
     def jitter_helper(image: tf.Tensor) -> tf.Tensor:
         t_image = tf.convert_to_tensor(image, dtype = tf.float32)
         t_shp = tf.shape(t_image)
@@ -51,6 +67,14 @@ def jitter(delta: int = 6, seed = None) -> Callable:
 
 
 def scale(scales: Union[float, List[float]], seed = None) -> Callable:
+    '''
+    Inputs
+    ----------
+    scales - 
+
+    seed - 
+    '''
+        
     def scale_helper(images: tf.Tensor) -> tf.Tensor:
         t = tf.convert_to_tensor(images, dtype = tf.float32)
         
@@ -69,6 +93,16 @@ def scale(scales: Union[float, List[float]], seed = None) -> Callable:
 
 
 def flip(horizontal: bool = True, vertical: bool = False, seed = None) -> Callable:
+    '''
+    Inputs
+    ----------
+    horizontal - 
+
+    vertical - 
+
+    seed - 
+    '''
+        
     def flip_helper(images: tf.Tensor) -> tf.Tensor:
         if horizontal:
             images = tf.image.random_flip_left_right(images, seed = seed)
@@ -81,6 +115,14 @@ def flip(horizontal: bool = True, vertical: bool = False, seed = None) -> Callab
 
 
 def padding(size: int = 6, pad_value: float = 0.0) -> Callable:
+    '''
+    Inputs
+    ----------
+    size - 
+
+    pad_value - 
+    '''
+        
     pad_array = [(0, 0), (size, size), (size, size), (0, 0)]
     pad_value = tf.cast(pad_value, tf.float32)
 
@@ -91,6 +133,14 @@ def padding(size: int = 6, pad_value: float = 0.0) -> Callable:
 
 
 def apply_kernel(size: int, type: str) -> Callable:
+    '''
+    Inputs
+    ----------
+    size - 
+
+    type - 
+    '''
+        
     if type == 'BOX':
         kernel = tf.ones((size, size, 1, 1)) / (size ** 2)
 
@@ -133,6 +183,14 @@ def apply_kernel(size: int, type: str) -> Callable:
 
 
 def apply_double_kernel(size: int, type: str) -> Callable:
+    '''
+    Inputs
+    ----------
+    size - 
+
+    type - 
+    '''
+        
     if type == 'PREWIT':
         kernel1 = np.zeros((size, size))
         kernel1[0] = -1
@@ -173,6 +231,12 @@ def apply_double_kernel(size: int, type: str) -> Callable:
 
 
 def mean(size: int = 1) -> Callable:
+    '''
+    Inputs
+    ----------
+    size - 
+    '''
+        
     def mean_helper(images: tf.Tensor) -> tf.Tensor:
         return tfa.image.mean_filter2d(images, (size, size))
 
@@ -180,6 +244,12 @@ def mean(size: int = 1) -> Callable:
 
 
 def median(size: int = 1) -> Callable:
+    '''
+    Inputs
+    ----------
+    size - 
+    '''
+
     def median_helper(images: tf.Tensor) -> tf.Tensor:
         return tfa.image.median_filter2d(images, (size, size))
 
@@ -187,6 +257,14 @@ def median(size: int = 1) -> Callable:
 
 
 def deconvolution(image_size: int, size: int = 1) -> Callable:
+    '''
+    Inputs
+    ----------
+    image_size - 
+
+    size - 
+    '''
+        
     ANGLE = np.deg2rad(135)
     D = 22
 
@@ -225,6 +303,14 @@ def deconvolution(image_size: int, size: int = 1) -> Callable:
 
 
 def composition(input_shape: Tuple, transformations: List[Callable]) -> Callable:
+    '''
+    Inputs
+    ----------
+    input_shape - 
+
+    transformations - 
+    '''
+
     def compose(images: tf.Tensor) -> tf.Tensor:     
         for func in transformations:
             images = func(images)
@@ -235,6 +321,14 @@ def composition(input_shape: Tuple, transformations: List[Callable]) -> Callable
 
 
 def standard(input_shape: Tuple, unit: int):
+    '''
+    Inputs
+    ----------
+    input_shape - 
+
+    unit - 
+    '''
+
     unit = int(unit / 16) 
     return composition(input_shape,
         [

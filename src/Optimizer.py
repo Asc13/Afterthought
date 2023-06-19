@@ -28,7 +28,32 @@ def run(objective: Objective,
         threshold: Optional[int] = None,
         only_first_batch: Optional[bool] = False,
         verbose = True) -> List[tf.Tensor]:
+    '''
+    Inputs
+    ----------
+    objective - Objective to optimize (e.g: channel, layer, direction, etc ...)
 
+    parameterization - Image parameterization to use on optimization (e.g: fft, normal, cppn, etc ...)
+
+    optimizer - Gradient ascent optimizer (eg: Adam)
+
+    steps - Algorithm iterations (also known as epochs)
+
+    learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
+
+    transformations - List of transformations to use on the optimization process (default: standard, which uses a default set on the toolkit)
+
+    regularizers - List of regularizers to use on the optimization process (default: no regularizers)
+
+    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+
+    threshold - Number of steps that the algorithm uses to save the output (eg: 50 threshold on 1000 steps, makes the algorithm save the output save at 50, 100, 150, ...)
+    
+    only_first_batch - Flag that ensures that only the first batch is optimizable (default: False, only used for style transfer)
+
+    verbose - Algorithm verbosity (disable for no console output)
+    '''
+        
     model, objective_function, input_shape = objective.compile(len(parameterization.images))
 
     if optimizer is None:
@@ -132,68 +157,109 @@ def run_activation_atlas(path: str,
                          model: Wrapper,
                          layer: Union[int, str],
                          steps: int = 256,
+                         learning_rate: int = 0.05,
                          batches: int = 10,
                          samples: int = -1,
                          image_shape: Optional[Tuple] = (512, 512),
                          verbose = True) -> tf.Tensor:
+    '''
+    Inputs
+    ----------
+    path - Filesystem path for the image that will activate the model 
+
+    model - Model wrapper
+
+    layer - Layer to optimize (name or index)
+
+    steps - Algorithm iterations (also known as epochs)
+
+    learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
+
+    batches - Number of divisions of the activation tensor (for performance purposes)
+
+    samples - Number of batches that will be used on the optimization (default: -1 to use all - it takes a long time)
+
+    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+
+    verbose - Algorithm verbosity (disable for no console output)
+    '''
     
-        l = model.get_layer(layer)
-        image = load_image(model.get_input_shape(), path)
-        feature_extractor = Model(inputs = model.get_input(), outputs = l.output)
-        
-        if verbose:
-            plt.imshow(image[0])
-            plt.show()
-
-            prediction_probabilities = model.predict(image)
-            predictions = model.decode(prediction_probabilities.numpy())
+    l = model.get_layer(layer)
+    image = load_image(model.get_input_shape(), path)
+    feature_extractor = Model(inputs = model.get_input(), outputs = l.output)
     
-            print([(class_name, prob) for (_, class_name, prob) in predictions])
-    
-        acts = feature_extractor(image)[0]
-        acts_flat = tf.reshape(acts, ([-1] + [acts.shape[2]]))
-        indexes = np.arange(acts_flat.shape[0])
+    if verbose:
+        plt.imshow(image[0])
+        plt.show()
 
-        act_split = np.array_split(acts_flat, batches)
-        split = np.array_split(indexes, batches)
+        prediction_probabilities = model.predict(image)
+        predictions = model.decode(prediction_probabilities.numpy())
 
-        transformations = [
-            padding(16),
-            jitter(8, seed = 0),
-            scale((0.92, 0.96), seed = 0),
-            jitter(4, seed = 0) 
-        ]
+        print([(class_name, prob) for (_, class_name, prob) in predictions])
 
-        images_flat = []
+    acts = feature_extractor(image)[0]
+    acts_flat = tf.reshape(acts, ([-1] + [acts.shape[2]]))
+    indexes = np.arange(acts_flat.shape[0])
 
-        for n, s in enumerate(split):
-            if samples != -1 and n < samples:
-                parameterization = Parameterization.image_fft(image_shape[0], batches = len(s))
+    act_split = np.array_split(acts_flat, batches)
+    split = np.array_split(indexes, batches)
 
-                objectives = Objective.sum([
-                    Objective.direction(model, layer, vectors = np.asarray(v), batches = i)
-                    for i, v in enumerate(act_split[n])
-                ])
+    transformations = [
+        padding(16),
+        jitter(8, seed = 0),
+        scale((0.92, 0.96), seed = 0),
+        jitter(4, seed = 0) 
+    ]
 
-                images = run(objectives, parameterization, steps = steps, 
-                             transformations = transformations,
-                             image_shape = image_shape,
-                             verbose = verbose)
-                
-                for image in images:
-                    images_flat.append(image)
+    images_flat = []
 
-        images_flat = np.array(images_flat)
+    for n, s in enumerate(split):
+        if samples != -1 and n < samples:
+            parameterization = Parameterization.image_fft(image_shape[0], batches = len(s))
 
-        return images_flat
+            objectives = Objective.sum([
+                Objective.direction(model, layer, vectors = np.asarray(v), batches = i)
+                for i, v in enumerate(act_split[n])
+            ])
+
+            images = run(objectives, parameterization, steps = steps, 
+                            learning_rate = learning_rate,
+                            transformations = transformations,
+                            image_shape = image_shape,
+                            verbose = verbose)
+            
+            for image in images:
+                images_flat.append(image)
+
+    images_flat = np.array(images_flat)
+
+    return images_flat
 
 
 def run_activation_layer(path: str,
                          model: Wrapper,
                          layers: List[Union[int, str]],
                          steps: int = 256,
+                         learning_rate: int = 0.05,
                          image_shape: Optional[Tuple] = (512, 512),
                          verbose = True) -> tf.Tensor:
+    '''
+    Inputs
+    ----------
+    path - Filesystem path for the image that will activate the model 
+
+    model - Model wrapper
+
+    layers - List of the layers to optimize (name or index)
+
+    steps - Algorithm iterations (also known as epochs)
+
+    learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
+
+    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+
+    verbose - Algorithm verbosity (disable for no console output)
+    '''
 
     image = load_image(model.get_input_shape(), path)
 
@@ -228,6 +294,7 @@ def run_activation_layer(path: str,
     ]
 
     images = run(objectives, parameterization, steps = steps, 
+                 learning_rate = learning_rate,
                  transformations = transformations,
                  image_shape = image_shape,
                  verbose = verbose)
@@ -241,9 +308,31 @@ def run_style_transfer(image_path: str,
                        layers: List[Union[int, str]],
                        style_layers: List[Union[int, str]],
                        steps: int = 256,
+                       learning_rate: int = 0.1,
                        image_shape: Optional[Tuple] = (512, 512),
                        verbose = True) -> tf.Tensor:
-    
+    '''
+    Inputs
+    ----------
+    image_path - Filesystem path for the image that will activate the model 
+
+    style_path - Filesystem path for the image that will activate the model for style purposes
+
+    model - Model wrapper
+
+    layers - List of the layers to optimize (name or index)
+
+    style_layers - List of the layers to optimize for style purposes (name or index)
+
+    steps - Algorithm iterations (also known as epochs)
+
+    learning_rate - Gradient ascent optimizer learning rate (default: 0.1)
+
+    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+
+    verbose - Algorithm verbosity (disable for no console output)
+    '''
+
     image = load_image((1,) + image_shape + (3,), image_path)
     style = load_image((1,) + image_shape + (3,), style_path)
 
@@ -263,7 +352,7 @@ def run_style_transfer(image_path: str,
 
     images = run(objective, parameterization, 
                  transformations = transformations,
-                 steps = steps, learning_rate = 0.1,
+                 steps = steps, learning_rate = learning_rate,
                  verbose = verbose,
                  only_first_batch = True)
        
@@ -274,9 +363,25 @@ def run_style_transfer(image_path: str,
 def run_neuron_interaction(model: Wrapper,
                            neurons: List[Tuple], 
                            steps: int = 256,
+                           learning_rate: int = 0.05,
                            image_shape: Optional[Tuple] = (512, 512),
                            verbose = True):
-  
+    '''
+    Inputs
+    ----------
+    model - Model wrapper
+
+    neurons - List of the neurons to optimize (Tuples with the layer name or index and the channel index, eg: ('layer1', 4))
+
+    steps - Algorithm iterations (also known as epochs)
+
+    learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
+
+    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+
+    verbose - Algorithm verbosity (disable for no console output)
+    '''
+
     N = len(neurons)
     parameterization = Parameterization.image_fft(image_shape[0], batches = N ** 2)
 
@@ -286,7 +391,7 @@ def run_neuron_interaction(model: Wrapper,
     objectives = Objective.sum([objective(n, N * n + m) + objective(m, N * n + m) 
                                 for n in range(N) for m in range(N)])
     
-    images = run(objectives, parameterization, steps = steps, 
+    images = run(objectives, parameterization, steps = steps, learning_rate = learning_rate,
                  image_shape = image_shape, verbose = verbose)
   
     return images
@@ -299,7 +404,26 @@ def run_feature_inversion(path: str,
                           steps: int = 256,
                           image_shape: Optional[Tuple] = (512, 512),
                           verbose = True) -> tf.Tensor:
-    
+    '''
+    Inputs
+    ----------
+    path - Filesystem path for the image that will be used as parameterization 
+
+    model - Model wrapper
+
+    layers - List of the layers to optimize (name or index)
+
+    power - Dot product power for dot_comparison objective (default: 0)
+
+    steps - Algorithm iterations (also known as epochs)
+
+    learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
+
+    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+
+    verbose - Algorithm verbosity (disable for no console output)
+    '''
+
     image = load_image(model.get_input_shape(), path)
 
     if verbose:

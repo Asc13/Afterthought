@@ -6,9 +6,14 @@ from typing import Callable
 
 from src.Miscellaneous import blur_conv
 
-
+        
 def L1(factor: float = 1.0) -> Callable:
-    
+    '''
+    Inputs
+    ----------
+    factor - Regularizer power (default: 1)
+    ''' 
+            
     def reg(image: tf.Tensor) -> tf.Tensor:
         return factor * tf.reduce_mean(tf.abs(image))
     
@@ -16,6 +21,12 @@ def L1(factor: float = 1.0) -> Callable:
 
 
 def L2(factor: float = 1.0) -> Callable:
+    '''
+    Inputs
+    ----------
+    factor - Regularizer power (default: 1)
+    ''' 
+        
     def reg(image: tf.Tensor) -> tf.Tensor:
         return factor * tf.sqrt(tf.reduce_mean(image ** 2))
     
@@ -23,6 +34,12 @@ def L2(factor: float = 1.0) -> Callable:
 
 
 def Linf(factor: float = 1.0) -> Callable:
+    '''
+    Inputs
+    ----------
+    factor - Regularizer power (default: 1)
+    ''' 
+
     def reg(image: tf.Tensor) -> tf.Tensor:
         return factor * tf.reduce_max(tf.abs(image))
     
@@ -30,6 +47,12 @@ def Linf(factor: float = 1.0) -> Callable:
 
 
 def total_variation(factor: float = 1.0) -> Callable:
+    '''
+    Inputs
+    ----------
+    factor - Regularizer power (default: 1)
+    ''' 
+
     def reg(image: tf.Tensor) -> tf.Tensor:
         return factor * tf.image.total_variation(image)[0]
     
@@ -38,7 +61,16 @@ def total_variation(factor: float = 1.0) -> Callable:
 
 def boundary_complexity(width: int = 20, C: float = 0.5, 
                         factor: float = 1.0) -> Callable:
-    
+    '''
+    Inputs
+    ----------
+    width - Boundary's width
+
+    C - Boundary's color variation factor
+
+    factor - Regularizer power (default: 1)
+    ''' 
+
     def reg(image: tf.Tensor) -> tf.Tensor:
         mask = np.ones(image.shape[1:])
         mask[:, width:-width, width:-width] = 0.0
@@ -52,6 +84,16 @@ def boundary_complexity(width: int = 20, C: float = 0.5,
 
 
 def gauss_diff(higher: int, lower: int, factor: float = 1.0) -> Callable:
+    '''
+    Inputs
+    ----------
+    higher - Higher gaussian kernel size
+
+    lower - Lower gaussian kernel size
+
+    factor - Regularizer power (default: 1)
+    ''' 
+        
     x = cv2.getGaussianKernel(higher, -1)
     kernel1 = tf.cast(x.dot(x.T), tf.float32)
     kernel1 = tf.reshape(kernel1, (higher, higher, 1, 1))
