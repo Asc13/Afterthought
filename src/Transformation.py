@@ -12,9 +12,9 @@ def blur_T(sigma_range: Tuple[float, float] = (1.0, 2.0), kernel_size: int = 10)
     '''
     Inputs
     ----------
-    sigma_range - 
+    sigma_range - Tuple for the uniform function sigma range (default: (1.0, 2.0))
 
-    kernel_size - 
+    kernel_size - Blur kernel size
     '''
 
     uniform = tf.linspace(-(kernel_size - 1) / 2., (kernel_size - 1) / 2., kernel_size)
@@ -42,9 +42,9 @@ def jitter(delta: int = 6, seed = None) -> Callable:
     '''
     Inputs
     ----------
-    delta - 
+    delta - Value which will be cropped from the image
 
-    seed - 
+    seed - Random crop function seed
     '''
         
     def jitter_helper(image: tf.Tensor) -> tf.Tensor:
@@ -70,9 +70,9 @@ def scale(scales: Union[float, List[float]], seed = None) -> Callable:
     '''
     Inputs
     ----------
-    scales - 
+    scales - List or single value for the scaling factors (e.g: [1, 2, 3] or 1.4)
 
-    seed - 
+    seed - Uniform function seed
     '''
         
     def scale_helper(images: tf.Tensor) -> tf.Tensor:
@@ -96,11 +96,11 @@ def flip(horizontal: bool = True, vertical: bool = False, seed = None) -> Callab
     '''
     Inputs
     ----------
-    horizontal - 
+    horizontal - Flag for horizontal flip (default: False)
 
-    vertical - 
+    vertical - Flag for vertical flip (default: True)
 
-    seed - 
+    seed - Random flip function seed
     '''
         
     def flip_helper(images: tf.Tensor) -> tf.Tensor:
@@ -118,9 +118,9 @@ def padding(size: int = 6, pad_value: float = 0.0) -> Callable:
     '''
     Inputs
     ----------
-    size - 
+    size - Padding size
 
-    pad_value - 
+    pad_value - Scalar padding value
     '''
         
     pad_array = [(0, 0), (size, size), (size, size), (0, 0)]
@@ -136,9 +136,9 @@ def apply_kernel(size: int, type: str) -> Callable:
     '''
     Inputs
     ----------
-    size - 
+    size - Kernel size
 
-    type - 
+    type - Technique used (can be 'BOX', 'SIMPLE-LAPLACE', 'HARD-LAPLACE', 'SHARPNESS', 'HARD-SHARPNESS', 'MOTION-BLUR')
     '''
         
     if type == 'BOX':
@@ -186,9 +186,9 @@ def apply_double_kernel(size: int, type: str) -> Callable:
     '''
     Inputs
     ----------
-    size - 
+    size - Kernel size
 
-    type - 
+    type - Technique used (can be 'PREWIT', 'SCHARR')
     '''
         
     if type == 'PREWIT':
@@ -234,7 +234,7 @@ def mean(size: int = 1) -> Callable:
     '''
     Inputs
     ----------
-    size - 
+    size - Kernel size
     '''
         
     def mean_helper(images: tf.Tensor) -> tf.Tensor:
@@ -247,7 +247,7 @@ def median(size: int = 1) -> Callable:
     '''
     Inputs
     ----------
-    size - 
+    size - Kernel size
     '''
 
     def median_helper(images: tf.Tensor) -> tf.Tensor:
@@ -260,9 +260,9 @@ def deconvolution(image_size: int, size: int = 1) -> Callable:
     '''
     Inputs
     ----------
-    image_size - 
+    image_size - Image resizing resolution (e.g: 512 -> (512, 512, 3))
 
-    size - 
+    size - Kernel size for motion and edge blur
     '''
         
     ANGLE = np.deg2rad(135)
@@ -306,9 +306,9 @@ def composition(input_shape: Tuple, transformations: List[Callable]) -> Callable
     '''
     Inputs
     ----------
-    input_shape - 
+    input_shape - Model input shape for image preparation
 
-    transformations - 
+    transformations - List of transformation functions to compose, sequentially
     '''
 
     def compose(images: tf.Tensor) -> tf.Tensor:     
@@ -324,9 +324,9 @@ def standard(input_shape: Tuple, unit: int):
     '''
     Inputs
     ----------
-    input_shape - 
+    input_shape - Model input shape for image preparation
 
-    unit - 
+    unit - Default factor to use on the transformations
     '''
 
     unit = int(unit / 16) 
