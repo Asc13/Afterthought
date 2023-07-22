@@ -90,5 +90,5 @@ class GradientCAM(Attribution):
 
     @staticmethod
     @tf.function(reduce_retracing = True)
-    def compute_weights(gradients: tf.Tensor) -> tf.Tensor:
+    def compute_weights(gradients: tf.Tensor, feature_maps: tf.Tensor) -> tf.Tensor:
         return tf.reduce_mean(gradients, axis = (1, 2), keepdims = True)

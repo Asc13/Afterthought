@@ -25,8 +25,8 @@ def run(objective: Objective,
         transformations: Union[List[Callable], str] = 'standard',
         regularizers: List[Callable] = [],
         image_shape: Optional[Tuple] = (512, 512),
-        threshold: Optional[int] = None,
-        only_first_batch: Optional[bool] = False,
+        save_step: Optional[int] = None,
+        only_first_slot: Optional[bool] = False,
         verbose = True) -> List[tf.Tensor]:
     '''
     Inputs
@@ -47,9 +47,9 @@ def run(objective: Objective,
 
     image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
 
-    threshold - Number of steps that the algorithm uses to save the output (eg: 50 threshold on 1000 steps, makes the algorithm save the output save at 50, 100, 150, ...)
+    save_step - Number of steps that the algorithm uses to save the output (eg: 50 save_step on 1000 steps, makes the algorithm save the output save at 50, 100, 150, ...)
     
-    only_first_batch - Flag that ensures that only the first batch is optimizable (default: False, only used for style transfer)
+    only_first_slot - Flag that ensures that only the first slot is optimizable (default: False, only used for style transfer)
 
     verbose - Algorithm verbosity (disable for no console output)
     '''
@@ -74,13 +74,13 @@ def run(objective: Objective,
     input = parameterization.images
     
     ascent = gradient_ascent(objective_function, image_param, shape, 
-                             transformations, regularizers, only_first_batch)
+                             transformations, regularizers, only_first_slot)
 
     images = []
     inputs = []
 
-    for batch in range(shape[0]):
-        inputs.append(tf.Variable(input[batch]))
+    for slot in range(shape[0]):
+        inputs.append(tf.Variable(input[slot]))
 
     for step in range(steps):
         if verbose:
@@ -88,15 +88,20 @@ def run(objective: Objective,
 
         gradients = ascent(model, inputs)
 
-        for batch in range(shape[0]):
-            if gradients[batch] is not None:
-                optimizer.apply_gradients([(-gradients[batch], inputs[batch])])
+        for slot in range(shape[0]):
+            if only_first_slot and slot == 0:
+                if gradients[slot] is not None:
+                    optimizer.apply_gradients([(-gradients[slot], inputs[slot])])
+
+            elif not only_first_slot:
+                if gradients[slot] is not None:
+                    optimizer.apply_gradients([(-gradients[slot], inputs[slot])])
 
             last_iteration = step == steps - 1
-            should_save = threshold and (step + 1) % threshold == 0
+            should_save = save_step and (step + 1) % save_step == 0
             
             if should_save or last_iteration:
-                imgs = image_param[batch](inputs[batch])
+                imgs = image_param[slot](inputs[slot])
                 images.append(imgs)
 
     return images
@@ -107,7 +112,7 @@ def gradient_ascent(objective_function : Callable,
                     input_shape: Tuple,
                     transformations: Callable,
                     regularizers: List[Callable],
-                    only_first_batch: bool) -> Callable:
+                    only_first_slot: bool) -> Callable:
     
     @tf.function
     def step(model, inputs):
@@ -121,10 +126,10 @@ def gradient_ascent(objective_function : Callable,
                 i = image_param[index](inputs[index])
 
                 if transformations:
-                    if only_first_batch and index == 0:
+                    if only_first_slot and index == 0:
                         i = transformations(i)
 
-                    elif not only_first_batch:
+                    elif not only_first_slot:
                         i = transformations(i)
 
                     else:
@@ -138,16 +143,13 @@ def gradient_ascent(objective_function : Callable,
             loss = []
             
             for i in range(len(model_outputs)):
-
                 l = objective_function(model_outputs, i)
-
                 for r in regularizers:
                     l += r(imgs[i])
                     
                 loss.append(l)
-                
+            
             gradients = tape.gradient(loss, inputs)
-
         return gradients
     
     return step
@@ -175,9 +177,9 @@ def run_activation_atlas(path: str,
 
     learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
 
-    batches - Number of divisions of the activation tensor (for performance purposes)
+    slots - Number of divisions of the activation tensor (for performance purposes)
 
-    samples - Number of batches that will be used on the optimization (default: -1 to use all - it takes a long time)
+    batches - Number of batches that will be used on the optimization (default: -1 to use all - it takes a long time)
 
     image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
 
@@ -215,18 +217,18 @@ def run_activation_atlas(path: str,
 
     for n, s in enumerate(split):
         if samples != -1 and n < samples:
-            parameterization = Parameterization.image_fft(image_shape[0], batches = len(s))
+            parameterization = Parameterization.image_fft(image_shape[0], slots = len(s))
 
             objectives = Objective.sum([
-                Objective.direction(model, layer, vectors = np.asarray(v), batches = i)
+                Objective.direction(model, layer, vectors = np.asarray(v), slots = i)
                 for i, v in enumerate(act_split[n])
             ])
 
             images = run(objectives, parameterization, steps = steps, 
-                            learning_rate = learning_rate,
-                            transformations = transformations,
-                            image_shape = image_shape,
-                            verbose = verbose)
+                         learning_rate = learning_rate,
+                         transformations = transformations,
+                         image_shape = image_shape,
+                         verbose = verbose)
             
             for image in images:
                 images_flat.append(image)
@@ -280,11 +282,11 @@ def run_activation_layer(path: str,
         feature_extractor = Model(inputs = model.get_input(), outputs = l.output)  
         acts = feature_extractor(image)[0]
 
-        objectives.append(Objective.direction(model, e, np.array(acts), batches = n))
+        objectives.append(Objective.direction(model, e, np.array(acts), slots = n))
     
     objectives = Objective.sum(objectives)
 
-    parameterization = Parameterization.image_fft(image_shape[0], batches = len(layers))
+    parameterization = Parameterization.image_fft(image_shape[0], slots = len(layers))
 
     transformations = [
         padding(16),
@@ -352,9 +354,10 @@ def run_style_transfer(image_path: str,
 
     images = run(objective, parameterization, 
                  transformations = transformations,
-                 steps = steps, learning_rate = learning_rate,
+                 steps = steps, 
+                 learning_rate = learning_rate,
                  verbose = verbose,
-                 only_first_batch = True)
+                 only_first_slot = True)
        
     return images
 
@@ -383,10 +386,10 @@ def run_neuron_interaction(model: Wrapper,
     '''
 
     N = len(neurons)
-    parameterization = Parameterization.image_fft(image_shape[0], batches = N ** 2)
+    parameterization = Parameterization.image_fft(image_shape[0], slots = N ** 2)
 
-    objective = lambda n, i: 0.2 * Objective.channel(model, neurons[n][0], neurons[n][1], batches = i) +\
-                                   Objective.neuron(model, neurons[n][0], neurons[n][1], batches = i)
+    objective = lambda n, i: 0.2 * Objective.channel(model, neurons[n][0], neurons[n][1], slots = i) +\
+                                   Objective.neuron(model, neurons[n][0], neurons[n][1], slots = i)
     
     objectives = Objective.sum([objective(n, N * n + m) + objective(m, N * n + m) 
                                 for n in range(N) for m in range(N)])
@@ -438,11 +441,11 @@ def run_feature_inversion(path: str,
     objectives = []
 
     for n, e in enumerate(layers):
-        objectives.append(Objective.dot_comparison(model, e, batches = n, power = power))
+        objectives.append(Objective.dot_comparison(model, e, slots = n, power = power))
     
     objectives = Objective.sum(objectives)
 
-    parameterization = Parameterization.image(image, image_shape[0], batches = len(layers))
+    parameterization = Parameterization.image(image, image_shape[0], slots = len(layers))
 
     transformations = [
         padding(16),

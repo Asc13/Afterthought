@@ -275,7 +275,7 @@ def plot_all(images: tf.Tensor):
     for n, image in enumerate(images):
         a = fig.add_subplot(sqr, sqr, n + 1)
         plt.imshow(image[0])
-        plt.title('batch ' + str(n))
+        plt.title('slot ' + str(n))
         plt.axis('off')
 
     plt.show()

@@ -94,18 +94,18 @@ class Objective:
         return i
     
 
-    def compile(self, batches) -> Tuple[Model, Callable, Tuple]:
+    def compile(self, slots) -> Tuple[Model, Callable, Tuple]:
         feature_extractor = Model(inputs = self.model.get_input(), outputs = [*self.layers])
 
-        def objective_function(model_outputs, batch):
+        def objective_function(model_outputs, slot):
             loss = 0.0
             
             for index in range(len(self.indexes)):
-                loss += self.function[index](model_outputs, batch, self.indexes[index])
+                loss += self.function[index](model_outputs, slot, self.indexes[index])
 
             return loss
         
-        input_shape = (batches, *feature_extractor.input.shape[1:])
+        input_shape = (slots, *feature_extractor.input.shape[1:])
         
         return feature_extractor, objective_function, input_shape
     
@@ -113,8 +113,8 @@ class Objective:
     @staticmethod
     def layer(model: Wrapper,
               layer: Union[str, int],
-              deepDream: bool = False,
-              batches: Union[int, List[int]] = -1):
+              squared: bool = False,
+              slots: Union[int, List[int]] = -1):
 
         '''
         Inputs
@@ -123,18 +123,18 @@ class Objective:
 
         layer - Layer to optimize (name or index)
 
-        deepDream - Flag to raise the activation to 2
+        squared - Flag to raise the activation to 2
 
-        bacthes - List of batches that use this objetive (-1 to use all)
+        slots - List of slots that use this objetive (-1 to use all)
         ''' 
                 
         layer = model.get_layer(layer)
-        power = 2.0 if deepDream else 1.0
+        power = 2.0 if squared else 1.0
 
-        def optimization_function(model_outputs, batch, indexes):
-            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
-              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
-                return tf.reduce_mean(model_outputs[batch][indexes[0]] ** power)
+        def optimization_function(model_outputs, slot, indexes):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
+                return tf.reduce_mean(model_outputs[slot][indexes[0]] ** power)
 
             return tf.constant(0.0)
 
@@ -145,7 +145,7 @@ class Objective:
     def channel(model: Wrapper,
                 layer: Union[str, int],
                 channels: Union[int, List[int]],
-                batches: Union[int, List[int]] = -1):
+                slots: Union[int, List[int]] = -1):
 
         '''
         Inputs
@@ -156,7 +156,7 @@ class Objective:
 
         channel - Channel list to optimize (activations shape = (x, y, channels))
 
-        bacthes - List of batches that use this objetive (-1 to use all)
+        slots - List of slots that use this objetive (-1 to use all)
         ''' 
 
         layer = model.get_layer(layer)
@@ -172,13 +172,13 @@ class Objective:
                     if channels[i] < 0 or channels[i] > shape[3]:
                         channels[i] = shape[3] // 2
 
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             loss = 0.0
         
-            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
-              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
 
-                model_outputs = model_outputs[batch][indexes[0]]
+                model_outputs = model_outputs[slot][indexes[0]]
                 
                 if type(channels) is int:
                     return tf.reduce_mean(model_outputs[..., channels])
@@ -198,7 +198,7 @@ class Objective:
     def spatial(model: Wrapper,
                 layer: Union[str, int],
                 spatials: Union[int, List[int]],
-                batches: Union[int, List[int]] = -1):
+                slots: Union[int, List[int]] = -1):
         '''
         Inputs
         ----------
@@ -208,7 +208,7 @@ class Objective:
 
         spatials - Spatial list to optimize
 
-        bacthes - List of batches that use this objetive (-1 to use all)
+        slots - List of slots that use this objetive (-1 to use all)
         ''' 
 
         layer = model.get_layer(layer)
@@ -227,13 +227,13 @@ class Objective:
                                        s % shape[1]))
 
 
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             loss = 0.0
         
-            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
-              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
 
-                model_outputs = model_outputs[batch][indexes[0]]
+                model_outputs = model_outputs[slot][indexes[0]]
 
                 for c in coords:
                     loss += tf.reduce_mean(model_outputs[..., c[0], c[1], :])
@@ -251,7 +251,7 @@ class Objective:
                channels: Union[int, List[int]],
                x: int = None, 
                y: int = None, 
-               batches: Union[int, List[int]] = -1):
+               slots: Union[int, List[int]] = -1):
         '''
         Inputs
         ----------
@@ -263,7 +263,7 @@ class Objective:
 
         x and y - Neuron coordinates inside the channel (activations shape = (x, y, channels))
 
-        bacthes - List of batches that use this objetive (-1 to use all)
+        slots - List of slots that use this objetive (-1 to use all)
         ''' 
 
         layer = model.get_layer(layer)
@@ -282,13 +282,13 @@ class Objective:
                     if channels[i] < 0 or channels[i] > shape[3]:
                         channels[i] = shape[3] // 2
 
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             loss = 0.0
             
-            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
-              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
 
-                model_outputs = model_outputs[batch][indexes[0]]
+                model_outputs = model_outputs[slot][indexes[0]]
 
                 if type(channels) is int:
                     return tf.reduce_mean(model_outputs[..., _x, _y, channels])
@@ -308,7 +308,7 @@ class Objective:
     def direction(model: Wrapper,
                   layer: Union[str, int],
                   vectors: Union[tf.Tensor, List[tf.Tensor]],
-                  batches: Union[int, List[int]] = -1,
+                  slots: Union[int, List[int]] = -1,
                   power: float = 0.0):
         '''
         Inputs
@@ -319,7 +319,7 @@ class Objective:
 
         vectors - Vectors that define the direction to each channel tensor
 
-        bacthes - List of batches that use this objetive (-1 to use all)
+        slots - List of slots that use this objetive (-1 to use all)
 
         power - Dot product power
         ''' 
@@ -327,13 +327,13 @@ class Objective:
         layer = model.get_layer(layer)
         vectors = vectors.astype("float32")
 
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             loss = 0.0
             
-            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
-              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
 
-                model_outputs = model_outputs[batch][indexes[0]]
+                model_outputs = model_outputs[slot][indexes[0]]
 
                 if type(vectors) is not list:
                     return dot(model_outputs, vectors, power)
@@ -372,17 +372,17 @@ class Objective:
         layer1 = model.get_layer(layer1)
         layer2 = model.get_layer(layer2)
         
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             S = 0
 
-            batches = len(model_outputs)
-            weights = (np.arange(batches) / float(batches - 1))
+            slots = len(model_outputs)
+            weights = (np.arange(slots) / float(slots - 1))
 
-            model1_outputs = model_outputs[batch][indexes[0]]
-            model2_outputs = model_outputs[batch][indexes[1]]
+            model1_outputs = model_outputs[slot][indexes[0]]
+            model2_outputs = model_outputs[slot][indexes[1]]
 
-            S += (1 - weights[batch]) * tf.reduce_mean(model1_outputs[..., channel1])
-            S += weights[batch] * tf.reduce_mean(model2_outputs[..., channel2])
+            S += (1 - weights[slot]) * tf.reduce_mean(model1_outputs[..., channel1])
+            S += weights[slot] * tf.reduce_mean(model2_outputs[..., channel2])
 
             return S
         
@@ -402,21 +402,21 @@ class Objective:
 
         layer = model.get_layer(layer)
         
-        def optimization_function(model_outputs, batch, indexes):
-            batches = len(model_outputs)
+        def optimization_function(model_outputs, slot, indexes):
+            slots = len(model_outputs)
             outputs = []
 
             for m in model_outputs:
                 outputs.append(m[indexes[0]])
 
-            flattened = tf.reshape(outputs, [batches, -1, model_outputs[batch][indexes[0]].shape[-1]])
+            flattened = tf.reshape(outputs, [slots, -1, model_outputs[slot][indexes[0]].shape[-1]])
 
             grams = tf.matmul(flattened, flattened, transpose_a = True)
             grams = tf.nn.l2_normalize(grams, axis = [1, 2], epsilon = 1e-10)
 
             return sum([sum([tf.reduce_sum(grams[i] * grams[j])
-                        for j in range(batches) if j != i])
-                        for i in range(batches)]) / batches
+                        for j in range(slots) if j != i])
+                        for i in range(slots)]) / slots
 
         return Objective(model, [layer.output], [optimization_function], [[0]])
     
@@ -432,17 +432,17 @@ class Objective:
 
         layer - Layer to optimize (name or index)
 
-        decay - Decay penalty as batches move on
+        decay - Decay penalty as slots move on
         '''
 
         layer = model.get_layer(layer)
 
-        def optimization_function(model_outputs, batch, indexes):
-            batches = len(model_outputs)
+        def optimization_function(model_outputs, slot, indexes):
+            slots = len(model_outputs)
             loss = 0.0
 
-            for d in np.arange(1, batches, 1):
-                for i in range(batches - d):
+            for d in np.arange(1, slots, 1):
+                for i in range(slots - d):
                     arr1, arr2 = model_outputs[i][indexes[0]], model_outputs[i + d][indexes[0]]
                     loss += tf.reduce_mean((arr1 - arr2) ** 2) / decay ** float(d)
             
@@ -465,7 +465,7 @@ class Objective:
 
         transform - transform function for style tranfer
 
-        index - batch index to optimize for the activations
+        index - slot index to optimize for the activations
         ''' 
 
         outs = []
@@ -473,10 +473,10 @@ class Objective:
         for l in layers:
             outs.append(model.get_layer(l).output)
 
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             loss = 0.0
 
-            if batch == 0:
+            if slot == 0:
                 activations = [model_outputs[index][i] for i in indexes]
                 transfer_activations = [model_outputs[0][i] for i in indexes]
 
@@ -497,7 +497,7 @@ class Objective:
     @staticmethod
     def dot_comparison(model: Wrapper,
                        layer: Union[str, int],
-                       batches: Union[int, List[int]] = -1,
+                       slots: Union[int, List[int]] = -1,
                        power: float = 0.0):
         '''
         Inputs
@@ -506,20 +506,20 @@ class Objective:
 
         layers - Layer to optimize (name or index)
 
-        bacthes - List of batches that use this objetive (-1 to use all)
+        slots - List of slots that use this objetive (-1 to use all)
 
         power - Dot product power
         ''' 
 
         layer = model.get_layer(layer)
 
-        def optimization_function(model_outputs, batch, indexes):
+        def optimization_function(model_outputs, slot, indexes):
             loss = 0.0
             
-            if(isinstance(batches, list) and (batch in batches or -1 in batches)) or \
-              ((isinstance(batches, int)) and (batch == batches or -1 == batches)):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
 
-                model_outputs = model_outputs[batch][indexes[0]]
+                model_outputs = model_outputs[slot][indexes[0]]
 
                 dot = tf.reduce_sum(model_outputs ** 2)
                 magnitude = tf.sqrt(tf.reduce_sum(model_outputs ** 2))
