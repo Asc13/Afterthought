@@ -5,8 +5,8 @@ from tensorflow.keras.layers import Layer
 from tensorflow.keras import Model
 from typing import List, Tuple, Callable, Union
 
-from src.Miscellaneous import dot
-from src.Wrapper import *
+from Afterthought.Miscellaneous import dot
+from Afterthought.Wrapper import *
 
 
 class Objective:

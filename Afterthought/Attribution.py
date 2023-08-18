@@ -4,13 +4,10 @@ import cv2
 
 from abc import ABC, abstractmethod
 from tensorflow.keras import Model
-from tensorflow.keras.losses import cosine_similarity
-from skimage.segmentation import quickshift
-from sklearn import linear_model
-from typing import Union, Any, Callable
+from typing import Union
 
-from src.Miscellaneous import *
-from src.Wrapper import *
+from Afterthought.Miscellaneous import *
+from Afterthought.Wrapper import *
 
 
 class Attribution(ABC):

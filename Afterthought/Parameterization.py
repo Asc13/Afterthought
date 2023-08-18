@@ -1,10 +1,9 @@
 import tensorflow as tf
 import numpy as np
 
-from typing import Union, Tuple, List, Callable, Any
+from typing import Union, Tuple, List, Callable
 
-from src.Miscellaneous import *
-from src.Transformation import apply_kernel
+from Afterthought.Miscellaneous import *
 
 
 imagenet_color_correlation = tf.cast(

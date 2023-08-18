@@ -6,11 +6,10 @@ import cv2
 import os
 
 from math import *
-from typing import Tuple, Union, List
+from typing import Tuple, Union
 from PIL import Image
 from os import listdir
 from os.path import isfile, isdir, join
-
 
 
 def load_image(shape: Tuple, path: str) -> tf.Tensor:

@@ -5,15 +5,14 @@ import random
 import os
 
 from typing import Callable
-from tensorflow.keras.optimizers import Adam, Optimizer, Nadam
+from tensorflow.keras.optimizers import Adam, Optimizer
 from typing import Union, Tuple, List, Callable, Optional
-from tensorflow.keras import Model, applications, preprocessing
 
-from src.Objective import Objective
-from src.Parameterization import *
-from src.Transformation import *
-from src.Miscellaneous import *
-from src.Wrapper import *
+from Afterthought.Objective import Objective
+from Afterthought.Parameterization import *
+from Afterthought.Transformation import *
+from Afterthought.Miscellaneous import *
+from Afterthought.Wrapper import *
 
 
 def run(objective: Objective,

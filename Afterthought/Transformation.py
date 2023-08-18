@@ -6,7 +6,7 @@ import cv2
 
 from typing import Tuple, List, Union, Callable, Optional
 
-from src.Miscellaneous import kernel_fabricator, motion_kernel, blur_edge
+from Afterthought.Miscellaneous import kernel_fabricator, motion_kernel, blur_edge
 
 
 def jitter(delta: int = 6, seed = None) -> Callable:
