@@ -67,8 +67,7 @@ class Objective:
             function = function,
             indexes = indexes
         )
-
-
+    
     def __rmul__(self, new):
         return self.__mul__(new)
 
@@ -83,6 +82,30 @@ class Objective:
 
     def __neg__(self):
         return -1 * self
+    
+
+    def __pow__(self, power):
+        if isinstance(power, (int, float)):
+            layers = self.layers
+            function = list(map(lambda m: lambda x, y, z: m(x, y, z) ** power, self.function))
+            indexes = self.indexes
+
+        else:
+            layers = self.layers + power.layers
+            function = list(map(lambda m: (lambda x, y, z: m(x, y, z) ** power.function[0](x, y, z)), self.function)) * 2
+            
+            indexes = self.indexes
+            last = self.indexes[-1][-1]
+
+            for i in power.indexes:
+                indexes += [list(map(lambda x: x + last + 1, i))]
+
+        return Objective(
+            self.model,
+            layers = layers,
+            function = function,
+            indexes = indexes
+        )
     
 
     def sum(new):
@@ -134,6 +157,7 @@ class Objective:
         def optimization_function(model_outputs, slot, indexes):
             if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
               ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
+                
                 return tf.reduce_mean(model_outputs[slot][indexes[0]] ** power)
 
             return tf.constant(0.0)
@@ -218,13 +242,13 @@ class Objective:
 
         if len(shape) > 2:
             if type(spatials) is int:
-                coords.append((int(spatials / shape[1]), 
-                                   spatials % shape[1]))
+                coords.append((int(spatials / shape[2]), 
+                                   spatials % shape[2]))
 
             else:
                 for s in spatials:
-                    coords.append((int(s / shape[1]), 
-                                       s % shape[1]))
+                    coords.append((int(s / shape[2]), 
+                                       s % shape[2]))
 
 
         def optimization_function(model_outputs, slot, indexes):
@@ -245,6 +269,70 @@ class Objective:
         return Objective(model, [layer.output], [optimization_function], [[0]])
     
     
+    @staticmethod
+    def spatial_channel(model: Wrapper,
+                        layer: Union[str, int],
+                        channels: Union[int, List[int]],
+                        axis: str = 'x',
+                        slots: Union[int, List[int]] = -1):
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        channels - Spatial channels list to optimize
+
+        axis - Plane which the channel respects (x or y)
+
+        slots - List of slots that use this objetive (-1 to use all)
+        ''' 
+
+        layer = model.get_layer(layer)
+        shape = layer.output.shape
+
+        index = 1 if axis == 'x' else 2
+
+        if type(channels) is int:
+            if channels < 0 or channels > shape[index]:
+                channels = shape[index] // 2 
+
+        else:
+            for i in range(len(channels)):
+                if channels[i] < 0 or channels[i] > shape[index]:
+                    channels[i] = shape[index] // 2
+
+
+        def optimization_function(model_outputs, slot, indexes):
+            loss = 0.0
+        
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
+
+                model_outputs = model_outputs[slot][indexes[0]]
+
+                if type(channels) is int:
+                    if axis == 'x':
+                        return tf.reduce_mean(model_outputs[..., channels, :, :])
+                    
+                    return tf.reduce_mean(model_outputs[..., channels, :])
+                
+                else:
+                    for c in channels:
+                        if axis == 'x':
+                            loss += tf.reduce_mean(model_outputs[..., c, :, :])
+
+                        else:
+                            loss += tf.reduce_mean(model_outputs[..., c, :])
+
+                return loss
+                
+            return tf.constant(loss)
+
+        return Objective(model, [layer.output], [optimization_function], [[0]])
+    
+
     @staticmethod
     def neuron(model: Wrapper,
                layer: Union[str, int],
@@ -414,7 +502,7 @@ class Objective:
             grams = tf.matmul(flattened, flattened, transpose_a = True)
             grams = tf.nn.l2_normalize(grams, axis = [1, 2], epsilon = 1e-10)
 
-            return sum([sum([tf.reduce_sum(grams[i] * grams[j])
+            return -sum([sum([tf.reduce_sum(grams[i] * grams[j])
                         for j in range(slots) if j != i])
                         for i in range(slots)]) / slots
 
@@ -447,17 +535,120 @@ class Objective:
             loss = 0.0
 
             if slot == 0:
-                activations = [model_outputs[index][i] for i in indexes]
-                transfer_activations = [model_outputs[0][i] for i in indexes]
+                outputs = [model_outputs[0][i] for i in indexes]
+                targets = [model_outputs[index][i] for i in indexes]
 
                 if transform is not None:
-                    activations = [transform(activation) for activation in activations]
-                    transfer_activations = [transform(activation) for activation in transfer_activations]
+                    outputs = [transform(output) for output in outputs]
+                    targets = [transform(target) for target in targets]
 
-                def mean_L1(a, b):
-                    return tf.reduce_mean(tf.abs(a - b))
+                return -tf.add_n([tf.reduce_mean((a - b) ** 2) for a, b in zip(outputs, targets)]) / len(outputs)
 
-                return tf.add_n([mean_L1(a, b) for a, b in zip(activations, transfer_activations)])
+            return tf.constant(loss)
+
+        return Objective(model, outs, [optimization_function], [list(range(0, len(outs)))])
+
+
+    @staticmethod
+    def math(model: Wrapper,
+             layer: Union[str, int],
+             function: Callable,
+             slots: Union[int, List[int]] = -1):
+
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        layer - Layer to optimize (name or index)
+
+        function - Math function
+
+        slots - List of slots that use this objetive (-1 to use all)
+        ''' 
+                
+        layer = model.get_layer(layer)
+
+        def optimization_function(model_outputs, slot, indexes):
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
+                
+                return function(model_outputs[slot][indexes[0]])
+
+            return tf.constant(0.0)
+
+        return Objective(model, [layer.output], [optimization_function], [[0]])
+    
+
+    @staticmethod
+    def pathing(model: Wrapper,
+                channels: Union[int, List[int]] = None,
+                interval: Tuple[int, int] = None,
+                weigth: str = 'CONSTANT',
+                seed: int = 0,
+                slots: Union[int, List[int]] = -1):
+
+        '''
+        Inputs
+        ----------
+        model - Model wrapper
+
+        channels - Channel to optimize for the entire path or a list of the channels from the path
+
+        interval - Interval of the layer indexes for the path
+
+        weigth - Weigth priority for layers (can be 'CONSTANT', 'LOW-LEVEL', 'HIGH-LEVEL' OR 'RANDOM')
+
+        seed - Uniform distribution for selecting the channel for each layer if no channel is defined for optimization (default = 0)
+
+        slots - List of slots that use this objetive (-1 to use all)
+        ''' 
+    
+        outs = []
+
+        if interval:
+            interval = (max(interval[0], 0), min(interval[1], len(model.layers())))
+
+        for l in model.layers()[interval[0]:interval[1]] if interval else model.layers():
+            outs.append(model.get_layer(l).output)
+
+        if weigth == 'LOW-LEVEL':
+            weigth_a = np.flip(np.arange(1, len(outs) + 1))
+            weigth_a = (weigth_a - np.min(weigth_a)) / (np.max(weigth_a) - np.min(weigth_a))
+
+        elif weigth == 'HIGH-LEVEL':
+            weigth_a = np.arange(1, len(outs) + 1)
+            weigth_a = (weigth_a - np.min(weigth_a)) / (np.max(weigth_a) - np.min(weigth_a))
+
+        elif weigth == 'RANDOM':
+            weigth_a = np.random.uniform(low = 0, high = 1, size = len(outs))
+
+        else:
+            weigth_a = [1 / len(outs)] * len(outs)
+
+        def optimization_function(model_outputs, slot, indexes):
+            loss = 0.0
+
+            if(isinstance(slots, list) and (slot in slots or -1 in slots)) or \
+              ((isinstance(slots, int)) and (slot == slots or -1 == slots)):
+                
+                for i in indexes:
+                    out = model_outputs[slot][i]
+
+                    if isinstance(channels, int):
+                        index = channels if channels < (out.shape[-1] - 1) else (out.shape[-1] - 1)
+
+                    else:
+                        if channels is not None:
+                            valid_i = i if i < (len(channels) - 1) else channels[-1]
+                            index = channels[valid_i] if channels[valid_i] < (out.shape[-1] - 1) else (out.shape[-1] - 1)
+
+                        else:
+                            index = tf.random.uniform([1], 0, out.shape[-1] - 1, seed = seed, dtype = tf.int64)
+
+                    loss += (tf.reduce_mean(tf.gather(out, index, axis = -1)) * weigth_a[i])
+
+                return loss
 
             return tf.constant(loss)
 

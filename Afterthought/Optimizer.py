@@ -5,11 +5,12 @@ import random
 import os
 
 from typing import Callable
-from tensorflow.keras.optimizers import Adam, Optimizer
-from typing import Union, Tuple, List, Callable, Optional
+from tensorflow.keras.optimizers import Adam, Nadam, Optimizer
+from typing import Union, Tuple, List, Callable
 
 from Afterthought.Objective import Objective
 from Afterthought.Parameterization import *
+from Afterthought.Regularizer import *
 from Afterthought.Transformation import *
 from Afterthought.Miscellaneous import *
 from Afterthought.Wrapper import *
@@ -17,14 +18,15 @@ from Afterthought.Wrapper import *
 
 def run(objective: Objective,
         parameterization: Parameterization,
-        optimizer: Optional[Optimizer] = None,
+        optimizer: Optimizer = None,
         steps: int = 256,
         learning_rate: float = 0.05,
         transformations: Union[List[Callable], str] = 'standard',
         regularizers: List[Callable] = [],
-        image_shape: Optional[Tuple] = (512, 512),
-        save_step: List[int] = None,
-        only_first_slot: Optional[bool] = False,
+        image_shape: int = 512,
+        normalize_gradients: bool = False,
+        save_steps: List[int] = None,
+        only_first_slot: bool = False,
         verbose = True) -> List[tf.Tensor]:
     '''
     Inputs
@@ -43,9 +45,11 @@ def run(objective: Objective,
 
     regularizers - List of regularizers to use on the optimization process (default: no regularizers)
 
-    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+    image_shape - Images resolution (height and width, default: 512)
 
-    save_step - Number of steps list that the algorithm uses to save the output (eg: [50, 100, 150], makes the algorithm save the output save at 50, 100 and 150)
+    normalize_gradients - Normalize gradients each step (default: False)
+
+    save_steps - Number of steps list that the algorithm uses to save the output (eg: [50, 100, 150], makes the algorithm save the output save at 50, 100 and 150)
     
     only_first_slot - Flag that ensures that only the first slot is optimizable (default: False, only used for style transfer)
 
@@ -63,7 +67,7 @@ def run(objective: Objective,
     shape = input_shape
 
     if image_shape:
-        shape = (shape[0], *image_shape, shape[-1])
+        shape = (shape[0], image_shape, image_shape, shape[-1])
 
     if transformations == 'standard':
         transformations = standard((model.input.shape[1], model.input.shape[2]), shape[1])
@@ -75,7 +79,8 @@ def run(objective: Objective,
     input = parameterization.images
 
     ascent = gradient_ascent(objective_function, image_param, shape, 
-                             transformations, regularizers, only_first_slot)
+                             transformations, regularizers, 
+                             normalize_gradients, only_first_slot)
 
     images = []
     inputs = []
@@ -87,32 +92,31 @@ def run(objective: Objective,
         if verbose:
             print('Step ' + str(step))
 
-        gradients = ascent(model, inputs, tf.constant(step))
+        gradients = ascent(model, inputs, tf.constant(step)) 
 
         for slot in range(shape[0]):
-            if only_first_slot and slot == 0:
-                if gradients[slot] is not None:
+            if gradients[slot] is not None:
+                if only_first_slot and slot == 0:
                     optimizer.apply_gradients([(-gradients[slot], inputs[slot])])
 
-            elif not only_first_slot:
-                if gradients[slot] is not None:
+                elif not only_first_slot:
                     optimizer.apply_gradients([(-gradients[slot], inputs[slot])])
 
             last_iteration = step == steps - 1
-            should_save = save_step and (step + 1) in save_step
+            should_save = save_steps and (step + 1) in save_steps
             
             if should_save or last_iteration:
-                imgs = image_param[slot](inputs[slot])
-                images.append(imgs)
+                images.append(image_param[slot](inputs[slot]))
 
     return images
 
 
 def gradient_ascent(objective_function : Callable,
-                    image_param: Callable,
+                    image_param: List[Callable],
                     input_shape: Tuple,
                     transformations: Callable,
                     regularizers: List[Callable],
+                    normalize_gradients: bool,
                     only_first_slot: bool) -> Callable:
     
     @tf.function
@@ -121,7 +125,8 @@ def gradient_ascent(objective_function : Callable,
             tape.watch(inputs)
 
             model_outputs = []
-
+            imgs = []
+            
             for index in range(len(inputs)):
                 i = image_param[index](inputs[index])
 
@@ -137,17 +142,23 @@ def gradient_ascent(objective_function : Callable,
                         i = tf.image.resize(i, tf.cast([model_shape[1], model_shape[2]], tf.int32))
 
                 model_outputs.append(model(i))
+                imgs.append(tf.image.resize(i, (input_shape[1], input_shape[2])))
 
             loss = []
             
             for i in range(len(model_outputs)):
                 l = objective_function(model_outputs, i)
+
                 for r in regularizers:
-                    l += r(model_outputs[i])
-                    
+                    l -= r(imgs[i])
+                
                 loss.append(l)
             
             gradients = tape.gradient(loss, inputs)
+
+            if normalize_gradients:
+                gradients /= tf.math.reduce_std(gradients) + 1e-8
+
         return gradients
     
     return step
@@ -160,7 +171,8 @@ def run_activation_atlas(path: str,
                          learning_rate: int = 0.05,
                          batches: int = 10,
                          samples: int = -1,
-                         image_shape: Optional[Tuple] = (512, 512),
+                         image_shape: int = 512,
+                         normalize_gradients: bool = False,
                          verbose = True) -> tf.Tensor:
     '''
     Inputs
@@ -179,7 +191,9 @@ def run_activation_atlas(path: str,
 
     samples - Number of samples per batch (for performance purposes)
 
-    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+    image_shape - Images resolution (height and width, default: 512)
+
+    normalize_gradients - Normalize gradients each step (default: False)
 
     verbose - Algorithm verbosity (disable for no console output)
     '''
@@ -201,7 +215,7 @@ def run_activation_atlas(path: str,
     acts_flat = tf.reshape(acts, ([-1] + [acts.shape[2]]))
     act_split = np.array_split(acts_flat, batches)
 
-    unit = int(image_shape[0] / 128)
+    unit = int(image_shape / 128)
 
     transformations = [
         padding(unit * 4),
@@ -221,7 +235,7 @@ def run_activation_atlas(path: str,
         else:
             act_samples = np.array(list(s))
 
-        parameterization = Parameterization.image_fft(image_shape[0], slots = samples)
+        parameterization = Parameterization.image_fft(image_shape, slots = len(act_samples))
 
         objectives = Objective.sum([
             Objective.direction(model, layer, vectors = np.asarray(v), slots = i)
@@ -232,6 +246,7 @@ def run_activation_atlas(path: str,
                      learning_rate = learning_rate,
                      transformations = transformations,
                      image_shape = image_shape,
+                     normalize_gradients = normalize_gradients,
                      verbose = verbose)
         
         for image in images:
@@ -247,7 +262,8 @@ def run_activation_layer(path: str,
                          layers: List[Union[int, str]],
                          steps: int = 256,
                          learning_rate: int = 0.05,
-                         image_shape: Optional[Tuple] = (512, 512),
+                         image_shape: int = 512,
+                         normalize_gradients: bool = False,
                          verbose = True) -> tf.Tensor:
     '''
     Inputs
@@ -262,7 +278,9 @@ def run_activation_layer(path: str,
 
     learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
 
-    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+    image_shape - Images resolution (height and width, default: 512)
+
+    normalize_gradients - Normalize gradients each step (default: False)
 
     verbose - Algorithm verbosity (disable for no console output)
     '''
@@ -290,9 +308,9 @@ def run_activation_layer(path: str,
     
     objectives = Objective.sum(objectives)
 
-    parameterization = Parameterization.image_fft(image_shape[0], slots = len(layers))
+    parameterization = Parameterization.image_fft(image_shape, slots = len(layers))
 
-    unit = int(image_shape[0] / 128)
+    unit = int(image_shape / 128)
 
     transformations = [
         padding(unit * 4),
@@ -305,6 +323,7 @@ def run_activation_layer(path: str,
                  learning_rate = learning_rate,
                  transformations = transformations,
                  image_shape = image_shape,
+                 normalize_gradients = normalize_gradients,
                  verbose = verbose)
 
     return images
@@ -315,9 +334,13 @@ def run_style_transfer(image_path: str,
                        model: Wrapper,
                        layers: List[Union[int, str]],
                        style_layers: List[Union[int, str]],
+                       power: float = 100,
+                       style_power: float = 1,
                        steps: int = 256,
                        learning_rate: int = 0.1,
-                       image_shape: Optional[Tuple] = (512, 512),
+                       image_shape: int = 512,
+                       normalize_gradients: bool = False,
+                       save_steps: List[int] = None,
                        verbose = True) -> tf.Tensor:
     '''
     Inputs
@@ -332,24 +355,32 @@ def run_style_transfer(image_path: str,
 
     style_layers - List of the layers to optimize for style purposes (name or index)
 
+    power - Content layers power
+
+    style_power - Style layers power
+
     steps - Algorithm iterations (also known as epochs)
 
     learning_rate - Gradient ascent optimizer learning rate (default: 0.1)
 
-    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+    image_shape - Images resolution (height and width, default: 512)
+
+    normalize_gradients - Normalize gradients each step (default: False)
+
+    save_steps - Number of steps list that the algorithm uses to save the output (eg: [50, 100, 150], makes the algorithm save the output save at 50, 100 and 150)
 
     verbose - Algorithm verbosity (disable for no console output)
     '''
 
-    image = load_image((1,) + image_shape + (3,), image_path)
-    style = load_image((1,) + image_shape + (3,), style_path)
+    image = load_image(model.get_input_shape(), image_path)
+    style = load_image(model.get_input_shape(), style_path)
 
-    power = 1e2
+    objective = power * Objective.activation_difference(model, layers, index = 1) +\
+                style_power * Objective.activation_difference(model, style_layers, transform = gram_matrix, index = 2)
+    
+    parameterization = Parameterization.image_style_transfer(image, style)
 
-    objective = -power * Objective.activation_difference(model, layers, index = 1) -\
-                Objective.activation_difference(model, style_layers, transform = gram_matrix, index = 2)
-
-    unit = int(image_shape[0] / 128)
+    unit = int(image_shape / 128)
 
     transformations = [
         padding(unit * 4),
@@ -358,51 +389,116 @@ def run_style_transfer(image_path: str,
         jitter(unit, seed = 0)
     ]
 
-    parameterization = Parameterization.image_style_transfer(image, style)
-
-    images = run(objective, parameterization, 
+    images = run(objective, parameterization,
+                 steps = steps,
                  transformations = transformations,
-                 steps = steps, 
                  learning_rate = learning_rate,
+                 image_shape = image_shape,
+                 normalize_gradients = normalize_gradients,
+                 save_steps = save_steps,
                  verbose = verbose,
                  only_first_slot = True)
        
     return images
 
 
-
-def run_neuron_interaction(model: Wrapper,
-                           neurons: List[Tuple], 
-                           steps: int = 256,
-                           learning_rate: int = 0.05,
-                           image_shape: Optional[Tuple] = (512, 512),
-                           verbose = True):
+def run_maco(objective: Objective,
+             spectrum_path: str,
+             optimizer: Optimizer = None,
+             steps: int = 256,
+             std: Union[float, List[float]] = None,
+             box_size: Union[float, List[float]] = None,
+             crops: int = 32,
+             learning_rate: float = 1.0,
+             image_shape: int = 512,
+             save_steps: List[int] = None,
+             verbose = True) -> List[tf.Tensor]:
+        
     '''
     Inputs
     ----------
-    model - Model wrapper
+    objective - Objective to optimize (e.g: channel, layer, direction, etc ...)
 
-    neurons - List of the neurons to optimize (Tuples with the layer name or index and the channel index, eg: ('layer1', 4))
+    spectrum_path - Decorrelation spectrum file path
+
+    optimizer - Gradient ascent optimizer (eg: Adam)
 
     steps - Algorithm iterations (also known as epochs)
 
+    std - Noise intensity value or list (standard deviation)
+    
+    box - Crop boxes size percentage or list
+
+    crops - Number of crops each step
+
     learning_rate - Gradient ascent optimizer learning rate (default: 0.05)
 
-    image_shape - Images resolution (Tuple with the height and width, default: (512, 512))
+    image_shape - Images resolution (height and width, default: 512)
 
+    save_steps - Number of steps list that the algorithm uses to save the output (eg: [50, 100, 150], makes the algorithm save the output save at 50, 100 and 150)
+  
     verbose - Algorithm verbosity (disable for no console output)
     '''
-
-    N = len(neurons)
-    parameterization = Parameterization.image_fft(image_shape[0], slots = N ** 2)
-
-    objective = lambda n, i: 0.2 * Objective.channel(model, neurons[n][0], neurons[n][1], slots = i) +\
-                                   Objective.neuron(model, neurons[n][0], neurons[n][1], slots = i)
     
-    objectives = Objective.sum([objective(n, N * n + m) + objective(m, N * n + m) 
-                                for n in range(N) for m in range(N)])
+    model, objective_function, _ = objective.compile(slots = 1)
+
+    if optimizer is None:
+        optimizer = Nadam(learning_rate)
+
+    else:
+        optimizer = optimizer(learning_rate)
     
-    images = run(objectives, parameterization, steps = steps, learning_rate = learning_rate,
-                 image_shape = image_shape, verbose = verbose)
-  
-    return images
+    parameterization = Parameterization.image_maco(image_shape, spectrum_path, 1)
+    transformations = composition((model.input.shape[1], model.input.shape[2]), 
+                                  [maco_standard(image_shape, crops, steps, box_size, std)])
+
+    image_param = parameterization.function[0]
+    input = tf.Variable(parameterization.images[0])
+
+    transparency = tf.zeros((1, image_shape, image_shape, 3))
+
+    images = []
+    transparencies = []
+
+    ascent = maco_gradient_ascent(objective_function, image_param, transformations)
+
+    for step in range(steps):
+        if verbose:
+            print('Step ' + str(step))
+
+        gradients, gradients_images = ascent(model, input, tf.constant(step))
+
+        optimizer.apply_gradients([(-gradients, input)])
+        transparency += tf.abs(gradients_images)
+
+        last_iteration = step == steps - 1
+        should_save = save_steps and (step + 1) in save_steps
+        
+        if should_save or last_iteration:
+            transparencies.append(transparency)
+            images.append(image_param(input))
+
+    return images, transparencies
+
+
+def maco_gradient_ascent(objective_function : Callable,
+                         image_param: Callable,
+                         transformations: Callable) -> Callable:
+
+    @tf.function
+    def maco_step(model, input, step_index):
+        with tf.GradientTape() as tape:
+            tape.watch(input)
+
+            image = image_param(input)
+
+            crops = transformations(image, step_index)
+
+            loss = objective_function([model(crops)], 0)
+
+            gradients = tape.gradient(loss, [input, image])
+            gradients_phases, gradients_images = gradients
+
+        return gradients_phases, gradients_images
+    
+    return maco_step

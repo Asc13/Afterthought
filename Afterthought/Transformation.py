@@ -1,15 +1,14 @@
 import tensorflow as tf
 import tensorflow_addons as tfa
 import numpy as np
-import random
 import cv2
 
-from typing import Tuple, List, Union, Callable, Optional
+from typing import Tuple, List, Union, Callable
 
-from Afterthought.Miscellaneous import kernel_fabricator, motion_kernel, blur_edge
+from Afterthought.Miscellaneous import kernel_fabricator
 
 
-def jitter(delta: int = 6, seed = None) -> Callable:
+def jitter(delta: int = 6, seed: int = 0) -> Callable:
     '''
     Inputs
     ----------
@@ -18,15 +17,15 @@ def jitter(delta: int = 6, seed = None) -> Callable:
     seed - Random crop function seed
     '''
         
-    def jitter_helper(image: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
-        shape = tf.shape(image)
+    def jitter_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
+        shape = tf.shape(images)
 
-        return tf.image.random_crop(image, (shape[-4], shape[-3] - delta, shape[-2] - delta, shape[-1]), seed = seed)
+        return tf.image.random_crop(images, (shape[-4], shape[-3] - delta, shape[-2] - delta, shape[-1]), seed = seed)
     
     return jitter_helper
 
 
-def scale(scales: Union[float, List[float]], seed = None) -> Callable:
+def scale(scales: Union[float, List[float]], seed: int = 0) -> Callable:
     '''
     Inputs
     ----------
@@ -35,7 +34,7 @@ def scale(scales: Union[float, List[float]], seed = None) -> Callable:
     seed - Uniform function seed
     '''
         
-    def scale_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def scale_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         t = tf.convert_to_tensor(images, dtype = tf.float32)
         
         if isinstance(scales, list):
@@ -52,7 +51,7 @@ def scale(scales: Union[float, List[float]], seed = None) -> Callable:
     return scale_helper
 
 
-def flip(horizontal: bool = True, vertical: bool = False, seed = None) -> Callable:
+def flip(horizontal: bool = True, vertical: bool = False, seed: int = 0) -> Callable:
     '''
     Inputs
     ----------
@@ -63,7 +62,7 @@ def flip(horizontal: bool = True, vertical: bool = False, seed = None) -> Callab
     seed - Random flip function seed
     '''
         
-    def flip_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def flip_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         if horizontal:
             images = tf.image.random_flip_left_right(images, seed = seed)
 
@@ -86,11 +85,23 @@ def padding(size: int = 6, pad_value: float = 0.0) -> Callable:
     pad_array = [(0, 0), (size, size), (size, size), (0, 0)]
     pad_value = tf.cast(pad_value, tf.float32)
 
-    def padding_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def padding_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         return tf.pad(images, pad_array, mode = "CONSTANT", constant_values = pad_value)
 
     return padding_helper
 
+
+def adjust_hsv(delta: float = 0, saturation: Tuple[float, float] = (1, 1), 
+               values_range: Tuple[float, float] = (0, 1), seed: int = 0) -> Callable:
+
+    values_range = (min(values_range), max(values_range))
+    saturation = (min(values_range), max(values_range))
+
+    def adjust_hsv_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
+        return tfa.image.random_hsv_in_yiq(images, delta, saturation[0], saturation[1], values_range[0], values_range[1], seed = seed)
+
+    return adjust_hsv_helper
+    
 
 def apply_kernel(size: int, type: str) -> Callable:
     '''
@@ -98,7 +109,7 @@ def apply_kernel(size: int, type: str) -> Callable:
     ----------
     size - Kernel size
 
-    type - Technique used (can be 'BOX', 'SHARPNESS', 'HARD-SHARPNESS', 'MOTION-BLUR')
+    type - Technique used (can be 'BOX', 'SHARPNESS', 'HARD-SHARPNESS', 'GAUSSIAN-BLUR', 'MOTION-BLUR')
     '''
         
     if type == 'BOX':
@@ -128,7 +139,7 @@ def apply_kernel(size: int, type: str) -> Callable:
         kernel = tf.reshape(kernel, (size, size, 1, 1))
         kernel = tf.tile(kernel, [1, 1, 3, 1])
 
-    def apply_kernel_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def apply_kernel_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         return tf.nn.depthwise_conv2d(images, kernel, strides = [1, 1, 1, 1], padding = 'SAME') if kernel != None else images
     
     return apply_kernel_helper
@@ -177,7 +188,7 @@ def apply_double_kernel(size: int, type: str) -> Callable:
     kernel2 = tf.reshape(kernel2, (size, size, 1, 1))
     kernel2 = tf.tile(kernel2, [1, 1, 3, 1])
 
-    def apply_double_kernel_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def apply_double_kernel_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         images = tf.nn.depthwise_conv2d(images, kernel1, strides = [1, 1, 1, 1], padding = 'SAME')
         return tf.nn.depthwise_conv2d(images, kernel2, strides = [1, 1, 1, 1], padding = 'SAME')
     
@@ -191,7 +202,7 @@ def mean(size: int = 1) -> Callable:
     size - Kernel size
     '''
         
-    def mean_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def mean_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         return tfa.image.mean_filter2d(images, (size, size))
 
     return mean_helper
@@ -204,59 +215,13 @@ def median(size: int = 1) -> Callable:
     size - Kernel size
     '''
 
-    def median_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+    def median_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         return tfa.image.median_filter2d(images, (size, size))
 
     return median_helper
 
 
-def deconvolution(image_size: int, size: int = 1) -> Callable:
-    '''
-    Inputs
-    ----------
-    image_size - Image resizing resolution (e.g: 512 -> (512, 512, 3))
-
-    size - Kernel size for motion and edge blur
-    '''
-        
-    ANGLE = np.deg2rad(135)
-    D = 22
-
-    def deconvolution_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
-        images = tf.image.resize(images, [image_size, image_size])
-        images = blur_edge(images, size)
-
-        images = tf.transpose(images, (0, 3, 1, 2))
-
-        h, w = images.shape[-2:]
-
-        fft = tf.signal.rfft2d(images)
-        spectrum1 = tf.complex(tf.math.real(fft), tf.math.imag(fft))
-
-        images = tf.transpose(images, (0, 2, 3, 1))
-
-        psf = motion_kernel(ANGLE, D, size)
-        psf /= psf.sum()
-        kh, kw = psf.shape
-
-        psf = np.tile(np.reshape(psf, (kh, kw, 1)), 3)
-
-        psf_pad = np.zeros((h, w, 3))
-        psf_pad[:kh, :kw] = psf
-
-        psf_pad = tf.transpose(psf_pad, (2, 0, 1))
-        fft = tf.signal.rfft2d(psf_pad)
-        spectrum2 = tf.cast(tf.complex(tf.math.real(fft), tf.math.imag(fft)), tf.complex64)
-        
-        s = tf.signal.irfft2d(spectrum1 * spectrum2)
-        s /= tf.reduce_max(s)
-        
-        return tf.image.resize(tf.transpose(s, (0, 2, 3, 1)), [h, w])
-
-    return deconvolution_helper
-
-
-def maco_standard(size: int, crops: int, steps: int, box_size: Union[list, float] = None, std: Union[list, float] = None, seed: int = 0):
+def maco_standard(size: int, crops: int, steps: int, box_size: Union[list, float] = None, std: Union[list, float] = None):
     '''
     Inputs
     ----------
@@ -266,12 +231,13 @@ def maco_standard(size: int, crops: int, steps: int, box_size: Union[list, float
 
     steps - Activation maximization steps, to know the size of the linspaces
 
-    std - Noise standard deviation
+    box_size - Crop boxes percentage value or list
 
-    seed - Randomness seed
+    std - Noise intensity value or list (standard deviation)
     '''
+
     box_size_values = None
-    noise_values = None
+    std_values = None
 
     if isinstance(box_size, list):
         box_size_values = box_size
@@ -280,32 +246,33 @@ def maco_standard(size: int, crops: int, steps: int, box_size: Union[list, float
         box_size_values = list(np.linspace(0.5, 0.05, steps))
     
     if isinstance(std, list):
-        noise_values = std
+        std_values = std
         
     else:
-        noise_values = list(np.logspace(0, -4, steps))
-    
-    def maco_standard_helper(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:
+        std_values = list(np.logspace(0, -4, steps))
+
+
+    def maco_standard_helper(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:
         new_box_size = box_size if (box_size and isinstance(box_size, float)) else tf.gather(box_size_values, step)
-        noise_std = std if (std and isinstance(std, float) ) else tf.gather(noise_values, step)
+        new_std = std if (std and isinstance(std, float)) else tf.gather(std_values, step)
 
-        center_x = 0.5 + tf.random.normal((crops, ), stddev = 0.15, seed = seed)
-        center_y = 0.5 + tf.random.normal((crops, ), stddev = 0.15, seed = seed)
+        center_x = 0.5 + tf.random.normal((crops, ), stddev = 0.15)
+        center_y = 0.5 + tf.random.normal((crops, ), stddev = 0.15)
         
-        delta_x = tf.random.normal((crops, ), stddev = 0.05, mean = new_box_size, seed = seed)
-        delta_x = tf.clip_by_value(delta_x, 0.05, 1.0)
-        delta_y = delta_x
+        delta = tf.random.normal((crops, ), stddev = 0.05, mean = new_box_size)
+        delta = tf.clip_by_value(delta, 0.05, 1.0)
+        
+        boxes = tf.stack([center_x - delta * 0.5,
+                          center_y - delta * 0.5,
+                          center_x + delta * 0.5,
+                          center_y + delta * 0.5], -1)
+    
+        images = tf.image.crop_and_resize(images, boxes, 
+                                          tf.zeros(shape = (crops, ), dtype = tf.int32), 
+                                          (size, size))
 
-        box_indices = tf.zeros(shape = (crops, ), dtype = tf.int32)
-        boxes = tf.stack([center_x - delta_x * 0.5,
-                          center_y - delta_y * 0.5,
-                          center_x + delta_x * 0.5,
-                          center_y + delta_y * 0.5], -1)
-
-        images = tf.image.crop_and_resize(images, boxes, box_indices, (size, size))
-
-        images += tf.random.normal(images.shape, stddev = noise_std, mean = 0.0, seed = seed)
-        images += tf.random.uniform(images.shape, minval = -noise_std / 2.0, maxval = noise_std / 2.0, seed = seed)
+        images += tf.random.normal(images.shape, stddev = new_std, mean = 0.0)
+        images += tf.random.uniform(images.shape, minval = -new_std / 2.0, maxval = new_std / 2.0)
 
         return images
     
@@ -321,7 +288,7 @@ def composition(input_shape: Tuple, transformations: List[Callable]) -> Callable
     transformations - List of transformation functions to compose, sequentially
     '''
 
-    def compose(images: tf.Tensor, step: Optional[tf.Tensor]) -> tf.Tensor:     
+    def compose(images: tf.Tensor, step: tf.Tensor) -> tf.Tensor:     
         for func in transformations:
             images = func(images, step)
 

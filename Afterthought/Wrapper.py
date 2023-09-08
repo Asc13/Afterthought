@@ -2,13 +2,13 @@ import tensorflow as tf
 import numpy as np
 
 from tensorflow.keras.layers import Layer
-from tensorflow.keras import Model, applications
+from tensorflow.keras import Model, Sequential, applications
 from typing import Any, Union, Tuple
 
 
 class Wrapper:
 
-    def __init__(self, model: Union[str, Model],
+    def __init__(self, model: Union[str, Model, Sequential],
                        weights: Any = 'imagenet',
                        classes: int = 1000):
         

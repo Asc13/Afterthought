@@ -177,12 +177,13 @@ def convert_to_rgb(image: tf.Tensor, normalizer: Union[str, Callable],
     return image
 
 
-def maco_fft(spectrum, phase):
-    phase = phase - tf.reduce_mean(phase)
-    phase = phase / (tf.math.reduce_std(phase) + 1e-5)
+def maco_fft(spectrum: tf.Tensor, image: tf.Tensor) -> tf.Tensor:
+    image = image - tf.reduce_mean(image)
+    image = image / (tf.math.reduce_std(image) + 1e-5)
 
-    spectrum = tf.complex(tf.cos(phase) * spectrum, tf.sin(phase) * spectrum)
+    spectrum = tf.complex(tf.cos(image) * spectrum, tf.sin(image) * spectrum)
     image = tf.signal.irfft2d(spectrum)
+    
     image = tf.transpose(image, (0, 2, 3, 1))
 
     image = image - tf.reduce_mean(image)
@@ -278,7 +279,8 @@ class Parameterization:
                    num_layers: int = 8, 
                    activation_func: Callable = composite_activation,
                    std: float = 1,
-                   seed: int = 0):
+                   seed: int = 0, 
+                   values_range: Tuple[float, float] = (0, 1)):
         '''
         Inputs
         ----------
@@ -295,7 +297,11 @@ class Parameterization:
         activation_func - CPPN network final activation function (e.g: tanh)
         
         seed - CPPN network noise normal function generation seed
+
+        values_range - Image values range (e.g: between 0 and 1)
         '''
+
+        values_range = (min(values_range), max(values_range))
 
         r = 3.0 ** 0.5
         coord_range_x = tf.linspace(-r, r, size)
@@ -309,9 +315,10 @@ class Parameterization:
         images = tf.cast(tf.reshape(images, (1, 1, size, size, num_output_channels)), dtype = tf.float32)
         images = tf.tile(images, [slots, 1, 1, 1, 1])
         
-        function = lambda images: tf.map_fn(lambda image: cppn(image, size, num_output_channels, 
-                                                               num_hidden_channels, num_layers, 
-                                                               activation_func, std, seed), images)
+        function = lambda images: tf.map_fn(lambda image: tf.clip_by_value(cppn(image, size, num_output_channels, 
+                                                                                num_hidden_channels, num_layers, 
+                                                                                activation_func, std, seed), 
+                                                                           values_range[0], values_range[1]), images)
 
         return Parameterization(list(images), [function] * slots)
     
@@ -357,49 +364,39 @@ class Parameterization:
     
 
     @staticmethod
-    def image_style_transfer(image: tf.Tensor, style: tf.Tensor,
-                             std: float = 0.01, fft_decay: float = 0.85,
-                             normalizer: str = 'sigmoid', 
-                             values_range: Tuple[float, float] = (0, 1)):
+    def image_style_transfer(image: tf.Tensor, style: tf.Tensor):
         '''
         Inputs
         ----------
-        image - Image to use as parameterization tensor
+        image - Images to use as parameterization tensors
+        '''
+        
+        values_range = (0, 1)
 
-        style - Style image to use as parameterization tensorvalues_range
+        shape = (1, 1, 512, 512, 3)
 
-        std - Noise normal function standard deviation
+        images = fft_image(shape, 0.01, 0)  
+        fft_scale = get_fft_scale(shape[2], shape[3], decay_power = 0.85)
+        
+        function = lambda images: convert_to_rgb(fft_to_rgb(images, fft_scale), 'sigmoid', values_range)
 
-        fft_decay - Fast fourier transform decay power
+        identity = lambda images: images
 
-        normalizer - Color normalization function (e.g: sigmoid)
-
-        values_range - Image values range (e.g: between 0 and 1)
-        ''' 
-
-        values_range = (min(values_range), max(values_range))
-
-        shape = (1,) + image.shape
-
-        images = fft_image(shape, std)
-        fft_scale = get_fft_scale(shape[2], shape[3], decay_power = fft_decay)
-
-        function = lambda images: convert_to_rgb(fft_to_rgb(images, fft_scale), normalizer, values_range)
-        identity = lambda style: style
-
-        return Parameterization(list([images[0], image, style]), [function, identity, identity])
+        return Parameterization([images[0], image, style], [function, identity, identity])
     
 
     @staticmethod
     def image_maco(size: int, spectrum_path: str,
                    slots: int = 1, 
-                   std: float = 1,
+                   std: float = 0.01,
                    normalizer: str = 'sigmoid', 
                    values_range: Tuple[float, float] = (0, 1)):
         '''
         Inputs
         ----------
         size - Image resolution ([size, size, 3])
+
+        spectrum_path - Decorrelation spectrum file path
 
         slots - Number of slots/repetitions of the image tensor
 

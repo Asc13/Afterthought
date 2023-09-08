@@ -53,6 +53,26 @@ def load_files(path: str, size: int = 10, has_titles: bool = False):
         plt.axis('off')
 
 
+def create_adversarial(image1, image2, ratio = 0.1, position = (0.0, 0.0)):
+    h, w, c = image1.shape
+    
+    example = np.array(image1)
+
+    if ratio > 0:
+        height, width = int(ratio * h), int(ratio * w)
+
+        position_x = int(position[0] * (h - height))
+        position_y = int(position[1] * (w - width))
+
+        adversarial = Image.fromarray(np.uint8(image2 * 255.0))
+        adversarial = adversarial.resize((width, height), Image.LANCZOS)
+        adversarial = np.array(adversarial) / 255.0
+
+        example[position_y:position_y + width, position_x:position_x + height, 0:c] = adversarial
+    
+    return example
+
+
 @tf.function(reduce_retracing = True)
 def compute_gradients_fmaps(model: tf.keras.Model,
                             images: tf.Tensor,
@@ -78,53 +98,28 @@ def compute_gradients(model: tf.keras.Model,
     return tape.gradient(score, images)
 
 
-def repeat_labels(labels: tf.Tensor, repetitions: int) -> tf.Tensor:
-    labels = tf.expand_dims(labels, axis = 1)
-    labels = tf.repeat(labels, repeats = repetitions, axis = 1)
+@tf.function
+def similarity(x: tf.Tensor, y: tf.Tensor) -> tf.Tensor:
+    x = tf.nn.l2_normalize(x)
+    y = tf.cast(tf.nn.l2_normalize(y), tf.float32)
     
-    return tf.reshape(labels, (-1, *labels.shape[2:]))
+    return tf.reduce_sum(x * y)
 
 
 @tf.function
-def similarity(tensor_a: tf.Tensor, tensor_b: tf.Tensor) -> tf.Tensor:
-    tensor_a = tf.nn.l2_normalize(tensor_a)
-    tensor_b = tf.cast(tf.nn.l2_normalize(tensor_b), tf.float32)
-    
-    return tf.reduce_sum(tensor_a * tensor_b)
-
-
-@tf.function
-def dot(tensor_a: tf.Tensor, tensor_b: tf.Tensor, cossim_pow: float = 2.0) -> tf.Tensor:
-    sim = tf.maximum(similarity(tensor_a, tensor_b), 1e-1) ** cossim_pow
-    dot = tf.reduce_sum(tensor_a * tf.cast(tensor_b, tf.float32))
+def dot(x: tf.Tensor, y: tf.Tensor, cossim_pow: float = 2.0) -> tf.Tensor:
+    sim = tf.maximum(similarity(x, y), 1e-1) ** cossim_pow
+    dot = tf.reduce_sum(x * tf.cast(y, tf.float32))
 
     return dot * sim
 
 
-@tf.function
-def blur_conv(x, width = 3):
-  depth = x.shape[-1]
-  k = np.zeros([width, width, depth, depth])
-
-  for ch in range(depth):
-    k_ch = k[:, :, ch, ch]
-    k_ch[:,:] = 0.5
-    k_ch[1:-1, 1:-1] = 1.0
-
-  conv_k = lambda t: tf.nn.conv2d(t, k, [1, 1, 1, 1], "SAME")
-  return conv_k(x) / conv_k(tf.ones_like(x))
-
-
-def gram_matrix(image: tf.Tensor, normalize: bool = True) -> tf.Tensor:
-    channels = tf.shape(image)[-1]
-    flatten = tf.reshape(image, [-1, channels])
-    gram_matrix = tf.matmul(flatten, flatten, transpose_a = True)
-
-    if normalize:
-        length = tf.shape(flatten)[0]
-        gram_matrix /= tf.cast(length, tf.float32)
-
-    return gram_matrix
+def gram_matrix(input_tensor):
+    result = tf.linalg.einsum('bijc,bijd->bcd', input_tensor, input_tensor)
+    input_shape = tf.shape(input_tensor)
+    num_locations = tf.cast(input_shape[1] * input_shape[2], tf.float32)
+    
+    return result / (num_locations)
 
 
 def composite_activation(x):
@@ -145,9 +140,16 @@ def relu_normalized(x):
   return (x - 0.40) / 0.58
 
 
-@tf.function
-def addWeigthed(a: tf.Tensor, alpha: float, b: tf.Tensor, beta: float, gamma: float):
-    return tf.multiply(alpha, a) + tf.multiply(beta, b) + gamma
+def circle(center, r, size):
+    a = np.zeros(size, dtype = int)
+
+    for angle in range(0, 360, 5):
+        x = r * sin(radians(angle)) + center
+        y = r * cos(radians(angle)) + center
+        
+        a[int(round(x)) + int(sqrt(size)) * int(round(y))] = 1
+
+    return a
 
 
 def kernel_fabricator(size: int, center: int, border: int):
@@ -183,53 +185,6 @@ def kernel_fabricator(size: int, center: int, border: int):
         return a1
 
     return a3
-
-
-def blur_edge(images: tf.Tensor, size: int = 31) -> tf.Tensor:
-    _, h, w, _ = images.shape
-    
-    pad = tf.pad(images, [(0, 0), (size, size), (size, size), (0, 0)])
-    gauss = tfa.image.gaussian_filter2d(pad, (2 * size + 1, 2 * size + 1))
-
-    gauss = tf.image.resize(gauss, [h, w])
-    
-    y, x = np.indices((h, w))
-    dist = np.dstack([x, w - x - 1, y, h - y - 1]).min(-1)
-    m = np.minimum(np.float32(dist) / size, 1.0)
-    
-    m = tf.reshape(m, (1, h, w, 1))
-    m = tf.tile(m, [1, 1, 1, 3])
-    
-    return images * m + gauss * (1 - m)
-
-
-def motion_kernel(angle, d, sz = 1):
-    kern = np.ones((1, d), np.float32)
-    c, s = np.cos(angle), np.sin(angle)
-    
-    A = np.float32([[c, -s, 0], [s, c, 0]])
-    sz2 = sz // 2
-    
-    A[:, 2] = (sz2, sz2) - np.dot(A[:,:2], ((d - 1) * 0.5, 0))
-    kern = cv2.warpAffine(kern, A, (sz, sz), flags = cv2.INTER_CUBIC)
-    
-    return kern
-
-
-def gauss(std, x, y):
-    d = x ** 2 + y ** 2
-    g = exp(-d / (2 * std ** 2))
-
-    return g
-
-
-def high_pass(std, img_shape):
-    return np.asarray([[1 - gauss(std, x - img_shape[0] / 2, y - img_shape[1] / 2)  for y in range(img_shape[1])] for x in range(img_shape[0])])        
-
-
-def low_pass(std, img_shape):
-    return np.asarray([[gauss(std, x - img_shape[0]/2, y - img_shape[1]/2)  for y in range(img_shape[1])] for x in range(img_shape[0])])
-
 
 
 def normalize_image(image: Union[tf.Tensor, np.ndarray]) -> np.ndarray:
@@ -312,18 +267,45 @@ def plot_all(images: tf.Tensor, verbose: bool = True):
     plt.show()
 
 
+def plot_all_maco(images: tf.Tensor, alphas: tf.Tensor, percentile_image: float = 1.0, 
+                  percentile_alpha: float = 80, verbose: bool = True):
+    
+    fig = plt.figure(figsize = (20, 20))
+    sqr = sqrt(len(images))
+    perfect_square = sqr.is_integer() and sqr > 1
+    sqr = int(sqr)
+    sqr += 0 if perfect_square else 1
+
+    for n, image in enumerate(images):
+        a = fig.add_subplot(sqr, sqr, n + 1)
+
+        image = np.array(image[0]).copy()
+        image = clip_heatmap(image, percentile_image)
+
+        alpha = np.mean(np.array(alphas[n][0]).copy(), -1, keepdims = True)
+        alpha = np.clip(alpha, 0, np.percentile(alpha, percentile_alpha))
+        alpha = alpha / alpha.max()
+
+        image = image * alpha
+        image = normalize_image(image)
+
+        if verbose:
+            plt.title('slot ' + str(n))
+
+        plt.imshow(np.concatenate([image, alpha], -1))
+        plt.axis('off')
+    
+    plt.show()
+
+
 def compress(path):
-    dirs = [f for f in listdir(path) if isdir(join(path, f))]
+    files = [f for f in listdir(path) if isfile(join(path, f))]
 
-    for d in dirs:
-        new_path = path + d + '/'
-        files = [f for f in listdir(new_path) if isfile(join(new_path, f))]
+    for f in files:
+        image = Image.open(path + '\\' + f)
+        image = image.convert('RGB')
 
-        for f in files:
-            image = Image.open(new_path + f)
-            image = image.convert('RGB')
-
-            image.save(new_path + f,
-                       'JPEG',
-                       optimize = True,
-                       quality = 100)
+        image.save(path + '\\' + f,
+                   'JPEG',
+                   optimize = True,
+                   quality = 100)
