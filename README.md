@@ -1,6 +1,6 @@
 # Afterthought
 
-Tutorial for a simple Aftertought utilization 
+Tutorial for a simple Afterthought utilization 
 ### 1. Load a model
 ```python
 model = Wrapper(model = 'InceptionV3')
